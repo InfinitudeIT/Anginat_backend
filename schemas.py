@@ -1,13 +1,11 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, UUID4
 from typing import Optional
 from enum import Enum
 from datetime import date
 from sqlalchemy.dialects.postgresql import JSONB
 
 class EventStatusEnum(str, Enum):
-    PENDING = "pending"
     APPROVED = "approved"
-    REJECTED = "rejected"
 
 class UserSchema(BaseModel):
     id: int
@@ -34,6 +32,7 @@ class UserLogin(BaseModel):
     password: str
 
 class EventCreate(BaseModel):
+    id: UUID4
     event_name: str
     venue_address: str
     event_date: date
@@ -41,11 +40,13 @@ class EventCreate(BaseModel):
     delegates: bool
     speaker: bool
     nri: bool
+    class Config:
+        from_attributes = True
     
-    model_config = ConfigDict(from_attributes=True)
+    
 
 class EventResponse(EventCreate):
-    id: int
+    id: UUID4
     user_id: int
     status: EventStatusEnum
 

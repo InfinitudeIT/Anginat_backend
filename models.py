@@ -35,7 +35,7 @@ class Event(Base):
     speaker = Column(Boolean, default=False)
     nri = Column(Boolean, default=False)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
-    status = Column(SQLAlchemyEnum(EventStatusEnum), default=EventStatusEnum.PENDING)
+    status = Column(SQLAlchemyEnum(EventStatusEnum), default=EventStatusEnum.APPROVED)
 
     owner = relationship("User", back_populates="events")
     forms = relationship("EventForm", back_populates="event", cascade="all, delete-orphan")

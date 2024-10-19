@@ -278,10 +278,12 @@ async def create_event(
     speaker: str = Form(...),
     nri: str = Form(...),
     db: Session = Depends(get_db),
-   
+    Authorize: AuthJWT = Depends()  # Added to get the user ID from the token
 ):
     try:
         # Validate the JWT token
+        Authorize.jwt_required()
+        current_user_id = Authorize.get_jwt_subject()  # Get the user ID from the token
 
         # Convert string values to booleans
         audience = audience.lower() == 'true'
@@ -289,7 +291,7 @@ async def create_event(
         speaker = speaker.lower() == 'true'
         nri = nri.lower() == 'true'
 
-        # Create the new event
+        # Create the new event and associate it with the current user
         new_event = Event(
             event_name=event_name,
             venue_address=venue_address,
@@ -298,8 +300,8 @@ async def create_event(
             delegates=delegates,
             speaker=speaker,
             nri=nri,
-             # Add the user_id to the event
-            status=EventStatusEnum.PENDING
+            user_id=current_user_id,  # Associate the event with the logged-in user
+            status=EventStatusEnum.APPROVED
         )
 
         # Add to the database session and commit
@@ -349,6 +351,7 @@ async def get_user_events(user_id: UUID, db: Session = Depends(get_db)):
         # Retrieve all events for the given user
         user_events = db.query(Event).filter(Event.user_id == user_id).all()
 
+        # Return the events as a list of Pydantic models
         return [EventCreate.from_orm(event) for event in user_events]
 
     except Exception as e:
@@ -371,4 +374,70 @@ async def submit_form(event_id: UUID, form_data: dict, db: Session = Depends(get
 async def get_forms(event_id: UUID, db: Session = Depends(get_db)):
     forms = db.query(EventForm).filter(EventForm.event_id == event_id).all()
     return {"forms": [form.form_data for form in forms]}
+
+
+
+@app.put("/edit_event/{event_id}", response_class=JSONResponse)
+async def edit_event(
+    event_id: UUID,
+    event_data: EventCreate,  # Using the same schema to validate incoming data
+    db: Session = Depends(get_db),
+    Authorize: AuthJWT = Depends()
+):
+    try:
+        # Validate the JWT token and get the user ID
+        Authorize.jwt_required()
+        current_user_id = Authorize.get_jwt_subject()
+
+        # Retrieve the event from the database
+        event = db.query(Event).filter(Event.id == event_id, Event.user_id == current_user_id).first()
+        if not event:
+            raise HTTPException(status_code=404, detail="Event not found or unauthorized")
+
+        # Update the event with new data
+        event.event_name = event_data.event_name
+        event.venue_address = event_data.venue_address
+        event.event_date = event_data.event_date
+        event.audience = event_data.audience
+        event.delegates = event_data.delegates
+        event.speaker = event_data.speaker
+        event.nri = event_data.nri
+
+        # Commit the changes to the database
+        db.commit()
+        db.refresh(event)
+
+        return JSONResponse(content={"success": True, "message": "Event updated successfully"}, status_code=200)
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error updating event: {str(e)}")
+    
+
+@app.post("/delete_event", response_class=JSONResponse)
+async def delete_event(
+    event_id: str = Form(...),  # Get the event_id from form data
+    db: Session = Depends(get_db),
+    Authorize: AuthJWT = Depends()
+):
+    try:
+        # Validate the JWT token and get the user ID
+        Authorize.jwt_required()
+        current_user_id = Authorize.get_jwt_subject()
+
+        # Check if the event exists and is owned by the current user
+        event = db.query(Event).filter(Event.id == event_id, Event.user_id == current_user_id).first()
+        if not event:
+            raise HTTPException(status_code=404, detail="Event not found or unauthorized")
+
+        # Delete the event
+        db.delete(event)
+        db.commit()
+
+        return JSONResponse(content={"success": True, "message": "Event deleted successfully"}, status_code=200)
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error deleting event: {str(e)}")
+
 
