@@ -40,6 +40,8 @@ class EventCreate(BaseModel):
     delegates: bool
     speaker: bool
     nri: bool
+    lunch: bool
+    kit: bool
     class Config:
         from_attributes = True
     

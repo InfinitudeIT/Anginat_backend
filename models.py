@@ -34,6 +34,8 @@ class Event(Base):
     delegates = Column(Boolean, default=False)
     speaker = Column(Boolean, default=False)
     nri = Column(Boolean, default=False)
+    lunch = Column(Boolean, default=False)
+    kit = Column(Boolean, default=False)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     status = Column(SQLAlchemyEnum(EventStatusEnum), default=EventStatusEnum.APPROVED)
 

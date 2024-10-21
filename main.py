@@ -277,6 +277,8 @@ async def create_event(
     delegates: str = Form(...),
     speaker: str = Form(...),
     nri: str = Form(...),
+    lunch: str = Form(...),
+    kit: str = Form(...),
     db: Session = Depends(get_db),
     Authorize: AuthJWT = Depends()  # Added to get the user ID from the token
 ):
@@ -290,6 +292,8 @@ async def create_event(
         delegates = delegates.lower() == 'true'
         speaker = speaker.lower() == 'true'
         nri = nri.lower() == 'true'
+        lunch = lunch.lower() == 'true'
+        kit = kit.lower() == 'true'
 
         # Create the new event and associate it with the current user
         new_event = Event(
@@ -300,6 +304,8 @@ async def create_event(
             delegates=delegates,
             speaker=speaker,
             nri=nri,
+            lunch = lunch,
+            kit = kit,
             user_id=current_user_id,  # Associate the event with the logged-in user
             status=EventStatusEnum.APPROVED
         )
@@ -441,3 +447,27 @@ async def delete_event(
         raise HTTPException(status_code=500, detail=f"Error deleting event: {str(e)}")
 
 
+@app.get("/event/{event_id}", response_class=JSONResponse)
+async def get_event(event_id: int, db: Session = Depends(get_db), Authorize: AuthJWT = Depends()):
+    try:
+        Authorize.jwt_required()
+        current_user_id = Authorize.get_jwt_subject()
+
+        event = db.query(Event).filter(Event.id == event_id, Event.user_id == current_user_id).first()
+
+        if not event:
+            raise HTTPException(status_code=404, detail="Event not found")
+
+        event_data = {
+            "event_name": event.event_name,
+            "venue_address": event.venue_address,
+            "event_date": event.event_date.strftime('%Y-%m-%d'),
+            "audience": event.audience,
+            "delegates": event.delegates,
+            "speaker": event.speaker,
+            "nri": event.nri,
+        }
+
+        return JSONResponse(content={"success": True, "event": event_data}, status_code=200)
+    except Exception as e:
+        return JSONResponse(content={"success": False, "message": str(e)}, status_code=500)
