@@ -62,3 +62,5 @@ class ImageModel(Base):
     data = Column(LargeBinary, nullable=False)
 
     event = relationship("Event", back_populates="image")
+
+    

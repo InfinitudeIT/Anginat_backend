@@ -408,6 +408,8 @@ async def edit_event(
         event.delegates = event_data.delegates
         event.speaker = event_data.speaker
         event.nri = event_data.nri
+        event.lunch = event_data.lunch
+        event.kit = event_data.kit
 
         # Commit the changes to the database
         db.commit()
@@ -448,7 +450,7 @@ async def delete_event(
 
 
 @app.get("/event/{event_id}", response_class=JSONResponse)
-async def get_event(event_id: int, db: Session = Depends(get_db), Authorize: AuthJWT = Depends()):
+async def get_event(event_id: str, db: Session = Depends(get_db), Authorize: AuthJWT = Depends()):
     try:
         Authorize.jwt_required()
         current_user_id = Authorize.get_jwt_subject()
@@ -466,8 +468,49 @@ async def get_event(event_id: int, db: Session = Depends(get_db), Authorize: Aut
             "delegates": event.delegates,
             "speaker": event.speaker,
             "nri": event.nri,
+            "lunch": event.lunch,
+            "kit": event.kit
         }
 
         return JSONResponse(content={"success": True, "event": event_data}, status_code=200)
     except Exception as e:
         return JSONResponse(content={"success": False, "message": str(e)}, status_code=500)
+
+
+@app.post("/create_form/{event_id}")
+async def create_form(event_id: UUID, form_data: dict, db: Session = Depends(get_db)):
+    # Check if the event exists
+    event = db.query(Event).filter(Event.id == event_id).first()
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    # Create a new form and store its structure as JSON
+    new_form = EventForm(event_id=event_id, form_data=form_data)
+    db.add(new_form)
+    db.commit()
+    db.refresh(new_form)
+
+    return {"success": True, "form_id": str(new_form.id), "message": "Form created successfully"}
+
+
+@app.get("/generate_embed_link/{event_id}")
+async def generate_embed_link(event_id: UUID):
+    # Generate an embedded link using the event ID
+    embed_link = f"http://localhost:3000/form/{event_id}"
+    return {"success": True, "embed_link": embed_link}
+
+
+@app.post("/submit_form/{event_id}")
+async def submit_form(event_id: UUID, form_data: dict, db: Session = Depends(get_db)):
+    try:
+        # Store the submitted form data as JSON linked to the event
+        new_form_submission = EventForm(event_id=event_id, form_data=form_data)
+        db.add(new_form_submission)
+        db.commit()
+        db.refresh(new_form_submission)
+
+        return {"success": True, "message": "Form submitted successfully"}
+    except Exception as e:
+        return {"success": False, "message": f"Error: {str(e)}"}
+    
+
