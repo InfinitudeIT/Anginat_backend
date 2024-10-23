@@ -32,7 +32,7 @@ import json
 import os
 from uuid import UUID, uuid4
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import Form
+from fastapi import Form, Body
 from fastapi_jwt_auth import AuthJWT
 from fastapi_jwt_auth.exceptions import AuthJWTException
 from fastapi import FastAPI, Request, Depends, Form
@@ -382,11 +382,18 @@ async def get_forms(event_id: UUID, db: Session = Depends(get_db)):
     return {"forms": [form.form_data for form in forms]}
 
 
-
 @app.put("/edit_event/{event_id}", response_class=JSONResponse)
 async def edit_event(
     event_id: UUID,
-    event_data: EventCreate,  # Using the same schema to validate incoming data
+    event_name: str = Form(...),
+    venue_address: str = Form(...),
+    event_date: str = Form(...),
+    audience: bool = Form(...),
+    delegates: bool = Form(...),
+    speaker: bool = Form(...),
+    nri: bool = Form(...),
+    lunch: bool = Form(...),
+    kit: bool = Form(...),
     db: Session = Depends(get_db),
     Authorize: AuthJWT = Depends()
 ):
@@ -401,15 +408,15 @@ async def edit_event(
             raise HTTPException(status_code=404, detail="Event not found or unauthorized")
 
         # Update the event with new data
-        event.event_name = event_data.event_name
-        event.venue_address = event_data.venue_address
-        event.event_date = event_data.event_date
-        event.audience = event_data.audience
-        event.delegates = event_data.delegates
-        event.speaker = event_data.speaker
-        event.nri = event_data.nri
-        event.lunch = event_data.lunch
-        event.kit = event_data.kit
+        event.event_name = event_name
+        event.venue_address = venue_address
+        event.event_date = event_date  # Convert to date if necessary
+        event.audience = audience
+        event.delegates = delegates
+        event.speaker = speaker
+        event.nri = nri
+        event.lunch = lunch
+        event.kit = kit
 
         # Commit the changes to the database
         db.commit()
@@ -420,7 +427,6 @@ async def edit_event(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error updating event: {str(e)}")
-    
 
 @app.post("/delete_event", response_class=JSONResponse)
 async def delete_event(
