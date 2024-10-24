@@ -96,7 +96,7 @@ fm = FastMail(conf)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Allow only your frontend URL
+    allow_origins=["http://18.117.20.193:3000/"],  # Allow only your frontend URL
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
