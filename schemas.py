@@ -3,6 +3,7 @@ from typing import Optional
 from enum import Enum
 from datetime import date
 from sqlalchemy.dialects.postgresql import JSONB
+from typing import Dict, Any
 
 class EventStatusEnum(str, Enum):
     APPROVED = "approved"
@@ -62,11 +63,29 @@ class EventFormCreate(BaseModel):
     phoneno: str
     dropdown: str
 
-class EventFormResponse(EventFormCreate):
-    id: int
+class FormCreate(BaseModel):
+    form_name: str
+    form_data: list[Dict]
+
+class FormSubmissionCreate(BaseModel):
+    submission_data: Dict[str, Any]  # Dynamic user-submitted data
+
+
+class FormResponse(BaseModel):
+    id: UUID4
+    form_name: str
+    form_data: Dict[str, Any]
 
     class Config:
         from_attributes = True
+
+class FormSubmissionResponse(BaseModel):
+    id: UUID4
+    submission_data: Dict[str, Any]
+
+    class Config:
+        from_attributes = True
+
 
 class UserDetails(BaseModel):
     id: int

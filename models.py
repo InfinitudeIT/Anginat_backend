@@ -41,26 +41,28 @@ class Event(Base):
 
     owner = relationship("User", back_populates="events")
     forms = relationship("EventForm", back_populates="event", cascade="all, delete-orphan")
-    image = relationship("ImageModel", back_populates="event", uselist=False, cascade="all, delete-orphan")
+    
+
 
 class EventForm(Base):
     __tablename__ = "event_forms"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     event_id = Column(UUID(as_uuid=True), ForeignKey("events.id"), nullable=False)
-    form_data = Column(JSONB, nullable=False)  # Store form fields and their values
-    qr_code = Column(LargeBinary)  # Store generated QR code if needed
+    form_name = Column(String, nullable=False)
+    form_data = Column(JSONB, nullable=False)  # Dynamic form structure
 
-    event = relationship("Event", back_populates="forms")
+    event = relationship("Event", back_populates="forms")  # Ensure this exists
+    submissions = relationship("EventFormSubmission", back_populates="form")
 
-class ImageModel(Base):
-    __tablename__ = "images"
 
-    id = Column(Integer, primary_key=True)
-    event_id = Column(UUID(as_uuid=True), ForeignKey("events.id"), unique=True, nullable=False)
-    filename = Column(String, nullable=False)
-    data = Column(LargeBinary, nullable=False)
 
-    event = relationship("Event", back_populates="image")
+class EventFormSubmission(Base):
+    __tablename__ = "event_form_submissions"
 
-    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    form_id = Column(UUID(as_uuid=True), ForeignKey("event_forms.id"), nullable=False)
+    submission_data = Column(JSONB, nullable=False)  # Store user-submitted data
+
+    form = relationship("EventForm", back_populates="submissions")
+
