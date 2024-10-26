@@ -9,11 +9,11 @@ from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from starlette.middleware.sessions import SessionMiddleware
 from itsdangerous import URLSafeTimedSerializer
 from database import SessionLocal, engine
-from models import User, Event, EventForm, ImageModel,Date
-from schemas import UserSchema, EventFormCreate, UserDetails, ImageCreate, ImageResponse, ImageBase, EventCreate
+from models import EventFormSubmission, User, Event, EventForm
+from schemas import UserSchema, EventFormCreate, UserDetails, EventCreate
 from database import Base
 from datetime import date
-from schemas import EventStatusEnum
+from schemas import EventStatusEnum, FormCreate
 import base64
 from typing import List, Any, Optional
 from email.mime.text import MIMEText
@@ -80,6 +80,7 @@ email_settings = EmailSettings(
     VALIDATE_CERTS=False
 )
 
+
 conf = ConnectionConfig(
     MAIL_USERNAME=email_settings.MAIL_USERNAME,
     MAIL_PASSWORD=email_settings.MAIL_PASSWORD,
@@ -96,7 +97,7 @@ fm = FastMail(conf)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://18.117.20.193:3000/"],  # Allow only your frontend URL
+    allow_origins=["http://localhost:3000"],  # Allow only your frontend URL
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -379,7 +380,7 @@ async def submit_form(event_id: UUID, form_data: dict, db: Session = Depends(get
 @app.get("/get_forms/{event_id}")
 async def get_forms(event_id: UUID, db: Session = Depends(get_db)):
     forms = db.query(EventForm).filter(EventForm.event_id == event_id).all()
-    return {"forms": [form.form_data for form in forms]}
+    return forms
 
 
 @app.put("/edit_event/{event_id}", response_class=JSONResponse)
@@ -483,20 +484,6 @@ async def get_event(event_id: str, db: Session = Depends(get_db), Authorize: Aut
         return JSONResponse(content={"success": False, "message": str(e)}, status_code=500)
 
 
-@app.post("/create_form/{event_id}")
-async def create_form(event_id: UUID, form_data: dict, db: Session = Depends(get_db)):
-    # Check if the event exists
-    event = db.query(Event).filter(Event.id == event_id).first()
-    if not event:
-        raise HTTPException(status_code=404, detail="Event not found")
-
-    # Create a new form and store its structure as JSON
-    new_form = EventForm(event_id=event_id, form_data=form_data)
-    db.add(new_form)
-    db.commit()
-    db.refresh(new_form)
-
-    return {"success": True, "form_id": str(new_form.id), "message": "Form created successfully"}
 
 
 @app.get("/generate_embed_link/{event_id}")
@@ -520,3 +507,51 @@ async def submit_form(event_id: UUID, form_data: dict, db: Session = Depends(get
         return {"success": False, "message": f"Error: {str(e)}"}
     
 
+@app.post("/submit_form/{form_id}")
+async def submit_form(
+    form_id: UUID, 
+    submission_data: str = Form(...), 
+    db: Session = Depends(get_db)
+):
+    try:
+        # Parse the user submission data
+        submission_json = json.loads(submission_data)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid submission data format")
+
+    new_submission = EventFormSubmission(
+        form_id=form_id, 
+        submission_data=submission_json
+    )
+    db.add(new_submission)
+    db.commit()
+    db.refresh(new_submission)
+
+    return {"success": True, "message": "Submission successful", "submission_id": str(new_submission.id)}
+
+from fastapi import Body, HTTPException
+
+@app.post("/create_form/{event_id}")
+async def save_form(
+    event_id: UUID,
+    payload: FormCreate,
+    db: Session = Depends(get_db),
+    Authorize: AuthJWT = Depends(),
+):
+    Authorize.jwt_required()
+    current_user_id = Authorize.get_jwt_subject()
+
+    # Log the incoming data for debugging
+    print(payload)
+
+    new_form = EventForm(
+        event_id=event_id,
+        form_name=payload.form_name,
+        form_data=payload.form_data,
+    )
+
+    db.add(new_form)
+    db.commit()
+    db.refresh(new_form)
+
+    return {"success": True, "form_id": str(new_form.id), "message": "Form created successfully"}
