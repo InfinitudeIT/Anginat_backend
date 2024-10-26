@@ -251,8 +251,6 @@ async def login_post(
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
 
-
-
 @app.get("/protected-route")
 def protected_route(Authorize: AuthJWT = Depends()):
     Authorize.jwt_required()  # Validates the JWT token
@@ -429,6 +427,7 @@ async def edit_event(
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error updating event: {str(e)}")
 
+
 @app.post("/delete_event", response_class=JSONResponse)
 async def delete_event(
     event_id: str = Form(...),  # Get the event_id from form data
@@ -484,8 +483,6 @@ async def get_event(event_id: str, db: Session = Depends(get_db), Authorize: Aut
         return JSONResponse(content={"success": False, "message": str(e)}, status_code=500)
 
 
-
-
 @app.get("/generate_embed_link/{event_id}")
 async def generate_embed_link(event_id: UUID):
     # Generate an embedded link using the event ID
@@ -505,29 +502,89 @@ async def submit_form(event_id: UUID, form_data: dict, db: Session = Depends(get
         return {"success": True, "message": "Form submitted successfully"}
     except Exception as e:
         return {"success": False, "message": f"Error: {str(e)}"}
-    
 
-@app.post("/submit_form/{form_id}")
-async def submit_form(
+@app.get("/form/{form_id}")
+async def get_form(
     form_id: UUID, 
-    submission_data: str = Form(...), 
+    db: Session = Depends(get_db), 
+    Authorize: AuthJWT = Depends()
+):
+    # Require authentication
+    Authorize.jwt_required()
+
+    # Query the form using the form_id
+    form = db.query(EventForm).filter(EventForm.id == form_id).first()
+
+    if not form:
+        raise HTTPException(status_code=404, detail="Form not found")
+
+    # Return the form data in JSON format
+    return {
+        "form_name": form.form_name,
+        "form_data": form.form_data,
+        "event_id": str(form.event_id)
+    }
+
+@app.get("/embed_form/{form_id}")
+async def get_form(
+    form_id: UUID, 
     db: Session = Depends(get_db)
 ):
-    try:
-        # Parse the user submission data
-        submission_json = json.loads(submission_data)
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="Invalid submission data format")
+    
+    # Query the form using the form_id
+    form = db.query(EventForm).filter(EventForm.id == form_id).first()
 
+    if not form:
+        raise HTTPException(status_code=404, detail="Form not found")
+
+    # Return the form data in JSON format
+    return {
+        "form_name": form.form_name,
+        "form_data": form.form_data,
+        "event_id": str(form.event_id)
+    }
+
+@app.put("/update_form/{form_id}", response_class=JSONResponse)
+async def update_form(
+    form_id: UUID,
+    payload: FormCreate,
+    db: Session = Depends(get_db),
+    Authorize: AuthJWT = Depends(),
+):
+    Authorize.jwt_required()
+    current_user_id = Authorize.get_jwt_subject()
+
+    # Query the form to ensure it exists
+    form = db.query(EventForm).filter(EventForm.id == form_id).first()
+    if not form:
+        raise HTTPException(status_code=404, detail="Form not found")
+
+    # Update the form's data
+    form.form_name = payload.form_name
+    form.form_data = payload.form_data
+
+    db.commit()
+    db.refresh(form)
+
+    return {"success": True, "form_id": str(form.id), "message": "Form updated successfully"}
+    
+
+app.post("/submit_form/{form_id}", status_code=201)
+async def submit_form(
+    form_id: UUID, submission_data: dict, db: Session = Depends(get_db)
+):
+    # Validate form ID
+    form = db.query(EventForm).filter(EventForm.id == form_id).first()
+    if not form:
+        raise HTTPException(status_code=404, detail="Form not found")
+
+    # Store the submission data
     new_submission = EventFormSubmission(
-        form_id=form_id, 
-        submission_data=submission_json
+        form_id=form_id, submission_data=submission_data
     )
     db.add(new_submission)
     db.commit()
-    db.refresh(new_submission)
-
-    return {"success": True, "message": "Submission successful", "submission_id": str(new_submission.id)}
+    return {"message": "Form submitted successfully"}
 
 from fastapi import Body, HTTPException
 
