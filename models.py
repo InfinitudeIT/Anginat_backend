@@ -62,8 +62,9 @@ class EventFormSubmission(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     form_id = Column(UUID(as_uuid=True), ForeignKey("event_forms.id"), nullable=False)
-    submission_data = Column(JSONB, nullable=False) 
-    mode =  Column(String)# Store user-submitted data
+    submission_data = Column(JSONB, nullable=False)  # Store user-submitted data
+    mode = Column(String)
+    qr_code = Column(LargeBinary)  # Store the QR code as binary data
 
     form = relationship("EventForm", back_populates="submissions")
 

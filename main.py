@@ -15,7 +15,7 @@ from database import Base
 from datetime import date
 from schemas import EventStatusEnum, FormCreate
 import base64
-from typing import List, Any, Optional
+from typing import Dict, List, Any, Optional
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import os
@@ -145,17 +145,14 @@ def add_no_cache_headers(response):
     response.headers["Expires"] = "0"
     return response
 
-def generate_qr_code(data: dict, file_path: str):
-    qr = qrcode.QRCode(
-        version=1,
-        error_correction=qrcode.constants.ERROR_CORRECT_L,
-        box_size=10,
-        border=4,
-    )
-    qr.add_data(data)
-    qr.make(fit=True)
-    img = qr.make_image(fill='black', back_color='white')
-    img.save(file_path)
+import qrcode
+from io import BytesIO
+
+def generate_qr_code(data: str) -> bytes:
+    qr = qrcode.make(data)
+    buffer = BytesIO()
+    qr.save(buffer, format="PNG")
+    return buffer.getvalue()
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -590,28 +587,86 @@ async def submit_form(
     return {"message": "Form submitted successfully"}
 
 
-@app.get("/form_submissions/{form_id}", status_code=status.HTTP_200_OK)
-async def get_form_submissions(
+
+@app.post("/delete_form/{form_id}", status_code=status.HTTP_200_OK)
+async def delete_form(
     form_id: UUID, 
+    db: Session = Depends(get_db), 
+    Authorize: AuthJWT = Depends()
+):
+    # Require authentication
+    Authorize.jwt_required()
+
+    # Query the form to ensure it exists
+    form = db.query(EventForm).filter(EventForm.id == form_id).first()
+
+    if not form:
+        raise HTTPException(status_code=404, detail="Form not found")
+
+    # Delete the form
+    db.delete(form)
+    db.commit()
+
+    return {"success": True, "message": "Form deleted successfully"} 
+
+
+@app.post("/submit_form/{form_id}", status_code=201)
+async def submit_form(
+    form_id: UUID, 
+    payload: dict,  
     db: Session = Depends(get_db)
 ):
-    # Query to fetch all submissions for the given form_id
+    # Validate form
+    form = db.query(EventForm).filter(EventForm.id == form_id).first()
+    if not form:
+        raise HTTPException(status_code=404, detail="Form not found")
+
+    # Store submission data
+    new_submission = EventFormSubmission(
+        form_id=form_id,
+        submission_data=payload["submission_data"],
+        mode=payload["mode"],
+        qr_code=generate_qr_code(str(payload["submission_data"]))  # Store QR as binary
+    )
+
+    db.add(new_submission)
+    db.commit()
+    return {"message": "Form submitted successfully"}
+
+
+from fastapi.responses import StreamingResponse
+
+@app.get("/qr_code/{submission_id}", status_code=200)
+async def get_qr_code(submission_id: UUID, db: Session = Depends(get_db)):
+    submission = db.query(EventFormSubmission).filter(
+        EventFormSubmission.id == submission_id
+    ).first()
+
+    if not submission or not submission.qr_code:
+        raise HTTPException(status_code=404, detail="QR code not found")
+
+    return StreamingResponse(BytesIO(submission.qr_code), media_type="image/png")
+
+
+
+@app.get("/submissions/{form_id}", response_model=List[Dict[str, Any]])
+async def get_form_submissions(form_id: UUID, db: Session = Depends(get_db)):
+    # Query all submissions linked to the given form_id
     submissions = db.query(EventFormSubmission).filter(
         EventFormSubmission.form_id == form_id
     ).all()
 
     if not submissions:
-        raise HTTPException(status_code=404, detail="No submissions found for this form.")
+        raise HTTPException(status_code=404, detail="No submissions found")
 
-    # Prepare the response
+    # Return all submission data along with the mode
     result = [
         {
-            "submission_id": str(sub.id),
             "submission_data": submission.submission_data,
             "mode": submission.mode,
         }
         for submission in submissions
     ]
 
-    return {"success": True, "submissions": result}
+    return result
 
