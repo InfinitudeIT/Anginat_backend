@@ -571,7 +571,7 @@ async def save_form(
 
 
 
-@app.post("/submit_form/{form_id}", status_code=201)
+'''@app.post("/submit_form/{form_id}", status_code=201)
 async def submit_form(
     form_id: UUID, 
     payload: dict,  # Ensure form_name is included in the payload
@@ -584,7 +584,7 @@ async def submit_form(
     )
     db.add(new_submission)
     db.commit()
-    return {"message": "Form submitted successfully"}
+    return {"message": "Form submitted successfully"}'''
 
 
 
