@@ -68,7 +68,8 @@ class FormCreate(BaseModel):
     form_data: list[Dict]
 
 class FormSubmissionCreate(BaseModel):
-    submission_data: Dict[str, Any]  # Dynamic user-submitted data
+    submission_data: Dict[str, Any] 
+    mode: str # Dynamic user-submitted data
 
 
 class FormResponse(BaseModel):

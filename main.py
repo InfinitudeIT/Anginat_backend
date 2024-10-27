@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Form, Request, Depends, HTTPException, BackgroundTasks, UploadFile, File, Path
+from fastapi import FastAPI, Form, Request, Depends, HTTPException, BackgroundTasks, UploadFile, File, Path, status
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session, joinedload
@@ -363,16 +363,6 @@ async def get_user_events(user_id: UUID, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Error retrieving user events: {str(e)}")
 
 
-@app.post("/submit_form/{event_id}")
-async def submit_form(event_id: UUID, form_data: dict, db: Session = Depends(get_db)):
-    try:
-        new_form = EventForm(event_id=event_id, form_data=form_data)
-        db.add(new_form)
-        db.commit()
-        db.refresh(new_form)
-        return JSONResponse(content={"success": True, "message": "Form submitted successfully.", "form_id": str(new_form.id)}, status_code=201)
-    except Exception as e:
-        return JSONResponse(content={"success": False, "message": f"An error occurred: {str(e)}"}, status_code=500)
 
 
 @app.get("/get_forms/{event_id}")
@@ -490,19 +480,6 @@ async def generate_embed_link(event_id: UUID):
     return {"success": True, "embed_link": embed_link}
 
 
-@app.post("/submit_form/{event_id}")
-async def submit_form(event_id: UUID, form_data: dict, db: Session = Depends(get_db)):
-    try:
-        # Store the submitted form data as JSON linked to the event
-        new_form_submission = EventForm(event_id=event_id, form_data=form_data)
-        db.add(new_form_submission)
-        db.commit()
-        db.refresh(new_form_submission)
-
-        return {"success": True, "message": "Form submitted successfully"}
-    except Exception as e:
-        return {"success": False, "message": f"Error: {str(e)}"}
-
 @app.get("/form/{form_id}")
 async def get_form(
     form_id: UUID, 
@@ -568,24 +545,6 @@ async def update_form(
 
     return {"success": True, "form_id": str(form.id), "message": "Form updated successfully"}
     
-
-app.post("/submit_form/{form_id}", status_code=201)
-async def submit_form(
-    form_id: UUID, submission_data: dict, db: Session = Depends(get_db)
-):
-    # Validate form ID
-    form = db.query(EventForm).filter(EventForm.id == form_id).first()
-    if not form:
-        raise HTTPException(status_code=404, detail="Form not found")
-
-    # Store the submission data
-    new_submission = EventFormSubmission(
-        form_id=form_id, submission_data=submission_data
-    )
-    db.add(new_submission)
-    db.commit()
-    return {"message": "Form submitted successfully"}
-
 from fastapi import Body, HTTPException
 
 @app.post("/create_form/{event_id}")
@@ -612,3 +571,47 @@ async def save_form(
     db.refresh(new_form)
 
     return {"success": True, "form_id": str(new_form.id), "message": "Form created successfully"}
+
+
+
+@app.post("/submit_form/{form_id}", status_code=201)
+async def submit_form(
+    form_id: UUID, 
+    payload: dict,  # Ensure form_name is included in the payload
+    db: Session = Depends(get_db)
+):
+    new_submission = EventFormSubmission(
+        form_id=form_id,
+        submission_data=payload["submission_data"],
+        mode = payload["mode"]
+    )
+    db.add(new_submission)
+    db.commit()
+    return {"message": "Form submitted successfully"}
+
+
+@app.get("/form_submissions/{form_id}", status_code=status.HTTP_200_OK)
+async def get_form_submissions(
+    form_id: UUID, 
+    db: Session = Depends(get_db)
+):
+    # Query to fetch all submissions for the given form_id
+    submissions = db.query(EventFormSubmission).filter(
+        EventFormSubmission.form_id == form_id
+    ).all()
+
+    if not submissions:
+        raise HTTPException(status_code=404, detail="No submissions found for this form.")
+
+    # Prepare the response
+    result = [
+        {
+            "submission_id": str(sub.id),
+            "submission_data": submission.submission_data,
+            "mode": submission.mode,
+        }
+        for submission in submissions
+    ]
+
+    return {"success": True, "submissions": result}
+
