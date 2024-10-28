@@ -670,3 +670,19 @@ async def get_form_submissions(form_id: UUID, db: Session = Depends(get_db)):
 
     return result
 
+
+@app.get("/submission/{submission_id}", status_code=200)
+async def get_submission_details(submission_id: UUID, db: Session = Depends(get_db)):
+    # Query the submission by ID
+    submission = db.query(EventFormSubmission).filter(EventFormSubmission.id == submission_id).first()
+
+    # Check if the submission exists
+    if not submission:
+        raise HTTPException(status_code=404, detail="Submission not found")
+
+    # Return the submission details
+    return {
+        "submission_data": submission.submission_data,
+        "mode": submission.mode,
+        "qr_code": submission.qr_code.decode('latin1') if submission.qr_code else None 
+    }
