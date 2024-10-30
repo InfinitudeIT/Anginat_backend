@@ -664,6 +664,7 @@ async def get_form_submissions(form_id: UUID, db: Session = Depends(get_db)):
         {
             "submission_data": submission.submission_data,
             "mode": submission.mode,
+            "id": submission.id
         }
         for submission in submissions
     ]
