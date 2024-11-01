@@ -145,21 +145,6 @@ def add_no_cache_headers(response):
     response.headers["Expires"] = "0"
     return response
 
-import qrcode
-from io import BytesIO
-
-def generate_qr_code(data: str) -> bytes:
-    qr = qrcode.make(data)
-    buffer = BytesIO()
-    qr.save(buffer, format="PNG")
-    return buffer.getvalue()
-
-
-@app.get("/", response_class=HTMLResponse)
-async def register(request: Request):
-    return templates.TemplateResponse("register.html", {"request": request})
-
-
 
 class UserRegisterRequest(BaseModel):
     email: str
@@ -192,11 +177,6 @@ async def register_post(user: UserRegisterRequest, db: Session = Depends(get_db)
     except Exception as e:
         db.rollback()
         return JSONResponse(content={"success": False, "message": f"An error occurred: {str(e)}"}, status_code=500)
-
-@app.get("/login", response_class=HTMLResponse)
-async def login(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request})
-
 
 class Settings(BaseModel):
     authjwt_secret_key: str = "xxxrtoiu897678"
@@ -300,8 +280,8 @@ async def create_event(
             delegates=delegates,
             speaker=speaker,
             nri=nri,
-            lunch = lunch,
-            kit = kit,
+            lunch=lunch,
+            kit=kit,
             user_id=current_user_id,  # Associate the event with the logged-in user
             status=EventStatusEnum.APPROVED
         )
@@ -609,29 +589,58 @@ async def delete_form(
 
     return {"success": True, "message": "Form deleted successfully"} 
 
+from io import BytesIO
+import qrcode
+
+def generate_qr_code(data: str) -> bytes:
+    qr = qrcode.make(data)
+    buffer = BytesIO()
+    qr.save(buffer, format="PNG")
+    return buffer.getvalue()
 
 @app.post("/submit_form/{form_id}", status_code=201)
 async def submit_form(
-    form_id: UUID, 
-    payload: dict,  
+    form_id: UUID,
+    payload: dict,  # Include form data in the payload
     db: Session = Depends(get_db)
 ):
-    # Validate form
+    # Get the form and associated event
     form = db.query(EventForm).filter(EventForm.id == form_id).first()
     if not form:
         raise HTTPException(status_code=404, detail="Form not found")
 
-    # Store submission data
+    event = form.event
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    # Create the submission with default kit/lunch based on the event settings
     new_submission = EventFormSubmission(
         form_id=form_id,
         submission_data=payload["submission_data"],
-        mode=payload["mode"],
-        qr_code=generate_qr_code(str(payload["submission_data"]))  # Store QR as binary
+        mode=payload.get("mode", "Online"),
+        lunch=event.lunch,  # Default value from event
+        kit=event.kit  # Default value from event
     )
 
+    # Save submission in the database
     db.add(new_submission)
     db.commit()
-    return {"message": "Form submitted successfully"}
+    db.refresh(new_submission)
+
+    # Generate a QR code with submission data and lunch/kit eligibility
+    user_data = payload["submission_data"]
+    user_data["lunch"] = new_submission.lunch
+    user_data["kit"] = new_submission.kit
+
+    # Generate QR code as binary data
+    qr_code_data = generate_qr_code(user_data)
+
+    # Save QR code binary data to the submission
+    new_submission.qr_code = qr_code_data
+    db.commit()
+
+    return {"message": "Form submitted successfully", "submission_id": str(new_submission.id)}
+
 
 
 from fastapi.responses import StreamingResponse
@@ -664,7 +673,6 @@ async def get_form_submissions(form_id: UUID, db: Session = Depends(get_db)):
         {
             "submission_data": submission.submission_data,
             "mode": submission.mode,
-            "id": submission.id
         }
         for submission in submissions
     ]
@@ -687,3 +695,14 @@ async def get_submission_details(submission_id: UUID, db: Session = Depends(get_
         "mode": submission.mode,
         "qr_code": submission.qr_code.decode('latin1') if submission.qr_code else None 
     }
+
+
+@app.post("/logout", response_class=JSONResponse)
+async def logout(Authorize: AuthJWT = Depends()):
+    try:
+        # Simulate logout by revoking the user's JWT token in the client
+        Authorize.unset_jwt_cookies()
+        return JSONResponse(content={"success": True, "message": "Logout successful"})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Logout failed: {str(e)}")
+

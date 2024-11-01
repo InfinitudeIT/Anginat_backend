@@ -22,6 +22,7 @@ class User(Base):
 
     events = relationship("Event", back_populates="owner")
 
+
 class Event(Base):
     __tablename__ = "events"
     __table_args__ = {'extend_existing': True}
@@ -57,6 +58,8 @@ class EventForm(Base):
 
 
 
+from sqlalchemy import Boolean
+
 class EventFormSubmission(Base):
     __tablename__ = "event_form_submissions"
 
@@ -65,6 +68,7 @@ class EventFormSubmission(Base):
     submission_data = Column(JSONB, nullable=False)  # Store user-submitted data
     mode = Column(String)
     qr_code = Column(LargeBinary)  # Store the QR code as binary data
+    lunch = Column(Boolean, default=False)  # New column for lunch eligibility
+    kit = Column(Boolean, default=False)    # New column for kit eligibility
 
     form = relationship("EventForm", back_populates="submissions")
-
