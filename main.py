@@ -704,5 +704,37 @@ async def logout(Authorize: AuthJWT = Depends()):
         Authorize.unset_jwt_cookies()
         return JSONResponse(content={"success": True, "message": "Logout successful"})
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Logout failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Logout failed: {str(e)}")  
+    
+
+
+@app.get("/event/{event_id}/registrations", response_model=list)
+async def get_event_registrations(event_id: UUID, db: Session = Depends(get_db)):
+    # Query to check if the event exists
+    event = db.query(Event).filter(Event.id == event_id).first()
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    # Retrieve all form submissions for the specified event
+    submissions = (
+        db.query(EventFormSubmission)
+        .join(EventForm, EventForm.id == EventFormSubmission.form_id)
+        .filter(EventForm.event_id == event_id)
+        .all()
+    )
+
+    # Transform submission data into a list of dictionaries for easy JSON serialization
+    result = [
+        {
+            "id": submission.id,
+            "form_id": submission.form_id,
+            "submission_data": submission.submission_data,
+            "mode": submission.mode,
+            "lunch": submission.lunch,
+            "kit": submission.kit
+        }
+        for submission in submissions
+    ]
+
+    return result
 
