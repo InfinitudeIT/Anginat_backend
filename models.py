@@ -42,7 +42,7 @@ class Event(Base):
 
     owner = relationship("User", back_populates="events")
     forms = relationship("EventForm", back_populates="event", cascade="all, delete-orphan")
-    
+    id_card_fields = relationship("IDCardFields", back_populates="event")
 
 
 class EventForm(Base):
@@ -55,7 +55,7 @@ class EventForm(Base):
 
     event = relationship("Event", back_populates="forms")  # Ensure this exists
     submissions = relationship("EventFormSubmission", back_populates="form")
-
+    id_card_fields = relationship("IDCardFields", back_populates="form")
 
 
 from sqlalchemy import Boolean
@@ -76,11 +76,12 @@ class EventFormSubmission(Base):
 
 class IDCardFields(Base):
     __tablename__ = "id_card_fields"
-
+    
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    event_id = Column(UUID(as_uuid=True), ForeignKey("events.id"), nullable=False)
     form_id = Column(UUID(as_uuid=True), ForeignKey("event_forms.id"), nullable=False)
     selected_fields = Column(JSONB, nullable=False)  # Stores selected fields for the ID card
     custom_layout = Column(JSONB, nullable=True)     # Optional custom layout for ID card fields
-    photo = Column(LargeBinary, nullable=True)      # Store photo as binary data
 
+    event = relationship("Event", back_populates="id_card_fields")
     form = relationship("EventForm", back_populates="id_card_fields")

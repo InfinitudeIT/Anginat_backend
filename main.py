@@ -738,27 +738,24 @@ async def validate_qr_code(submission_id: UUID, db: Session = Depends(get_db)):
         "mode": submission.mode
     })
 
-
-@app.post("/create_id_card_fields/{form_id}")
+@app.post("/create_id_card_fields/{event_id}/{form_id}")
 async def create_id_card_fields(
+    event_id: UUID,
     form_id: UUID,
     payload: IDCardFieldsCreate,
-    db: Session = Depends(get_db),
-    photo: UploadFile = File(None)
+    db: Session = Depends(get_db)
 ):
+    event = db.query(Event).filter(Event.id == event_id).first()
     form = db.query(EventForm).filter(EventForm.id == form_id).first()
-    if not form:
-        raise HTTPException(status_code=404, detail="Form not found")
+    if not event or not form:
+        raise HTTPException(status_code=404, detail="Event or Form not found")
 
-    # If a photo is uploaded, read it as binary data
-    photo_data = await photo.read() if photo else None
-
-    # Create new IDCardFields entry with the uploaded photo
+    # Create new IDCardFields entry
     new_id_card_fields = IDCardFields(
+        event_id=event_id,
         form_id=form_id,
         selected_fields=payload.selected_fields,
-        custom_layout=payload.custom_layout,
-        photo=photo_data  # Save the photo binary data
+        custom_layout=payload.custom_layout
     )
     db.add(new_id_card_fields)
     db.commit()
@@ -766,14 +763,14 @@ async def create_id_card_fields(
 
     return {"message": "ID card fields created successfully", "id_card_fields_id": str(new_id_card_fields.id)}
 
-
-@app.get("/id_card_fields/{form_id}")
+@app.get("/id_card_fields/{event_id}/{form_id}")
 async def get_id_card_fields(
+    event_id: UUID,
     form_id: UUID,
     db: Session = Depends(get_db)
 ):
     id_card_fields = db.query(IDCardFields).filter(
-        IDCardFields.form_id == form_id
+        IDCardFields.event_id == event_id, IDCardFields.form_id == form_id
     ).first()
     if not id_card_fields:
         raise HTTPException(status_code=404, detail="ID card fields not found")
@@ -781,4 +778,25 @@ async def get_id_card_fields(
     return {
         "selected_fields": id_card_fields.selected_fields,
         "custom_layout": id_card_fields.custom_layout
+    }
+
+
+
+@app.get("/form_by_event/{event_id}")
+async def get_form_by_event(
+    event_id: UUID, 
+    db: Session = Depends(get_db)
+):
+    # Query the first form using the event_id
+    form = db.query(EventForm).filter(EventForm.event_id == event_id).first()
+
+    if not form:
+        raise HTTPException(status_code=404, detail="Form not found for this event")
+
+    # Return the form data in JSON format
+    return {
+        "form_name": form.form_name,
+        "form_data": form.form_data,
+        "event_id": str(form.event_id),
+        "form_id": str(form.id)
     }
