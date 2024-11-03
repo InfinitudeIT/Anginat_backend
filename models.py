@@ -72,3 +72,15 @@ class EventFormSubmission(Base):
     kit = Column(Boolean, default=False)    # New column for kit eligibility
 
     form = relationship("EventForm", back_populates="submissions")
+
+
+class IDCardFields(Base):
+    __tablename__ = "id_card_fields"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    form_id = Column(UUID(as_uuid=True), ForeignKey("event_forms.id"), nullable=False)
+    selected_fields = Column(JSONB, nullable=False)  # Stores selected fields for the ID card
+    custom_layout = Column(JSONB, nullable=True)     # Optional custom layout for ID card fields
+    photo = Column(LargeBinary, nullable=True)      # Store photo as binary data
+
+    form = relationship("EventForm", back_populates="id_card_fields")

@@ -9,8 +9,8 @@ from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from starlette.middleware.sessions import SessionMiddleware
 from itsdangerous import URLSafeTimedSerializer
 from database import SessionLocal, engine
-from models import EventFormSubmission, User, Event, EventForm
-from schemas import UserSchema, EventFormCreate, UserDetails, EventCreate
+from models import EventFormSubmission, User, Event, EventForm, IDCardFields
+from schemas import UserSchema, EventFormCreate, UserDetails, EventCreate, IDCardFieldsCreate
 from database import Base
 from datetime import date
 from schemas import EventStatusEnum, FormCreate
@@ -550,24 +550,6 @@ async def save_form(
     return {"success": True, "form_id": str(new_form.id), "message": "Form created successfully"}
 
 
-
-'''@app.post("/submit_form/{form_id}", status_code=201)
-async def submit_form(
-    form_id: UUID, 
-    payload: dict,  # Ensure form_name is included in the payload
-    db: Session = Depends(get_db)
-):
-    new_submission = EventFormSubmission(
-        form_id=form_id,
-        submission_data=payload["submission_data"],
-        mode = payload["mode"]
-    )
-    db.add(new_submission)
-    db.commit()
-    return {"message": "Form submitted successfully"}'''
-
-
-
 @app.post("/delete_form/{form_id}", status_code=status.HTTP_200_OK)
 async def delete_form(
     form_id: UUID, 
@@ -726,8 +708,7 @@ async def get_event_registrations(event_id: UUID, db: Session = Depends(get_db))
     # Transform submission data into a list of dictionaries for easy JSON serialization
     result = [
         {
-            "id": submission.id,
-            "form_id": submission.form_id,
+    
             "submission_data": submission.submission_data,
             "mode": submission.mode,
             "lunch": submission.lunch,
@@ -738,3 +719,66 @@ async def get_event_registrations(event_id: UUID, db: Session = Depends(get_db))
 
     return result
 
+
+from fastapi.responses import JSONResponse
+
+@app.get("/validate_qr/{submission_id}")
+async def validate_qr_code(submission_id: UUID, db: Session = Depends(get_db)):
+    # Fetch the submission record
+    submission = db.query(EventFormSubmission).filter(EventFormSubmission.id == submission_id).first()
+    if not submission:
+        raise HTTPException(status_code=404, detail="Submission not found")
+
+    # Fetch details from the submission
+    return JSONResponse(content={
+        "success": True,
+        "submission_data": submission.submission_data,
+        "lunch": submission.lunch,
+        "kit": submission.kit,
+        "mode": submission.mode
+    })
+
+
+@app.post("/create_id_card_fields/{form_id}")
+async def create_id_card_fields(
+    form_id: UUID,
+    payload: IDCardFieldsCreate,
+    db: Session = Depends(get_db),
+    photo: UploadFile = File(None)
+):
+    form = db.query(EventForm).filter(EventForm.id == form_id).first()
+    if not form:
+        raise HTTPException(status_code=404, detail="Form not found")
+
+    # If a photo is uploaded, read it as binary data
+    photo_data = await photo.read() if photo else None
+
+    # Create new IDCardFields entry with the uploaded photo
+    new_id_card_fields = IDCardFields(
+        form_id=form_id,
+        selected_fields=payload.selected_fields,
+        custom_layout=payload.custom_layout,
+        photo=photo_data  # Save the photo binary data
+    )
+    db.add(new_id_card_fields)
+    db.commit()
+    db.refresh(new_id_card_fields)
+
+    return {"message": "ID card fields created successfully", "id_card_fields_id": str(new_id_card_fields.id)}
+
+
+@app.get("/id_card_fields/{form_id}")
+async def get_id_card_fields(
+    form_id: UUID,
+    db: Session = Depends(get_db)
+):
+    id_card_fields = db.query(IDCardFields).filter(
+        IDCardFields.form_id == form_id
+    ).first()
+    if not id_card_fields:
+        raise HTTPException(status_code=404, detail="ID card fields not found")
+
+    return {
+        "selected_fields": id_card_fields.selected_fields,
+        "custom_layout": id_card_fields.custom_layout
+    }

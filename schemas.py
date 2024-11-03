@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict, UUID4
-from typing import Optional
+from typing import List, Optional
 from enum import Enum
 from datetime import date
 from sqlalchemy.dialects.postgresql import JSONB
@@ -97,15 +97,6 @@ class UserDetails(BaseModel):
     class Config:
         from_attributes = True
 
-class ImageBase(BaseModel):
-    filename: str
-    event_id: int
-
-class ImageCreate(ImageBase):
-    data: bytes
-
-class ImageResponse(ImageBase):
-    id: int
-
-    class Config:
-        from_attributes = True
+class IDCardFieldsCreate(BaseModel):
+    selected_fields: List[Dict[str, str]]  # List of field names to include
+    custom_layout: Dict[str, str] = None   # Optional custom layout
