@@ -99,4 +99,3 @@ class UserDetails(BaseModel):
 
 class IDCardFieldsCreate(BaseModel):
     selected_fields: List[Dict[str, str]]  # List of field names to include
-    custom_layout: Dict[str, str] = None   # Optional custom layout

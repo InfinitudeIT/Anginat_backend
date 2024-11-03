@@ -82,6 +82,7 @@ class IDCardFields(Base):
     form_id = Column(UUID(as_uuid=True), ForeignKey("event_forms.id"), nullable=False)
     selected_fields = Column(JSONB, nullable=False)  # Stores selected fields for the ID card
     custom_layout = Column(JSONB, nullable=True)     # Optional custom layout for ID card fields
+    photo = Column(LargeBinary, nullable=True)
 
     event = relationship("Event", back_populates="id_card_fields")
     form = relationship("EventForm", back_populates="id_card_fields")
