@@ -710,7 +710,8 @@ async def get_event_registrations(event_id: UUID, db: Session = Depends(get_db))
             "submission_data": submission.submission_data,
             "mode": submission.mode,
             "lunch": submission.lunch,
-            "kit": submission.kit
+            "kit": submission.kit,
+            "id": submission.id
         }
         for submission in submissions
     ]
@@ -736,11 +737,13 @@ async def validate_qr_code(submission_id: UUID, db: Session = Depends(get_db)):
         "mode": submission.mode
     })
 
+
 @app.post("/create_id_card_fields/{event_id}/{form_id}")
 async def create_id_card_fields(
     event_id: UUID,
     form_id: UUID,
-    payload: IDCardFieldsCreate,
+    selected_fields: str = Form(...),  # Accept JSON string data as Form field
+    custom_layout: str = Form(...),
     photo: UploadFile = File(...),  # Accept photo as a file upload
     db: Session = Depends(get_db)
 ):
@@ -756,12 +759,19 @@ async def create_id_card_fields(
     except Exception as e:
         raise HTTPException(status_code=500, detail="Error reading photo") from e
 
+    # Parse the JSON strings for `selected_fields` and `custom_layout`
+    try:
+        selected_fields_data = json.loads(selected_fields)
+        custom_layout_data = json.loads(custom_layout)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON format")
+
     # Create new IDCardFields entry
     new_id_card_fields = IDCardFields(
         event_id=event_id,
         form_id=form_id,
-        selected_fields=payload.selected_fields,
-        custom_layout=payload.custom_layout,
+        selected_fields=selected_fields_data,
+        custom_layout=custom_layout_data,
         photo=photo_data  # Save the binary data of the photo
     )
 
@@ -772,6 +782,7 @@ async def create_id_card_fields(
 
     return {"message": "ID card fields created successfully", "id_card_fields_id": str(new_id_card_fields.id)}
 
+
 @app.get("/id_card_fields/{event_id}", response_class=JSONResponse)
 async def get_id_card_fields(
     event_id: UUID,
@@ -780,12 +791,17 @@ async def get_id_card_fields(
     id_card_fields = db.query(IDCardFields).filter(
         IDCardFields.event_id == event_id
     ).first()
+    
     if not id_card_fields:
-        raise HTTPException(status_code=200)
-
+        raise HTTPException(status_code=404, detail="ID card fields not found")
+    
+    # Convert the photo to Base64 if it exists
+    photo_base64 = base64.b64encode(id_card_fields.photo).decode('utf-8') if id_card_fields.photo else None
+    
     return {
+        "id": str(id_card_fields.id),
         "selected_fields": id_card_fields.selected_fields,
-        "custom_layout": id_card_fields.custom_layout
+        "photo": photo_base64  # Send the photo as a Base64-encoded string
     }
 
 
