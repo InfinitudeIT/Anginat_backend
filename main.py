@@ -793,7 +793,7 @@ async def get_id_card_fields(
     ).first()
     
     if not id_card_fields:
-        raise HTTPException(status_code=404, detail="ID card fields not found")
+        raise HTTPException(status_code=200)
     
     # Convert the photo to Base64 if it exists
     photo_base64 = base64.b64encode(id_card_fields.photo).decode('utf-8') if id_card_fields.photo else None
