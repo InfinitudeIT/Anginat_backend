@@ -824,3 +824,208 @@ async def get_form_by_event(
         "event_id": str(form.event_id),
         "form_id": str(form.id)
     }
+
+
+class SubmissionPayload(BaseModel):
+    submission_data: dict  # Form data (name, email, phone, etc.)
+    mode: str = "Online"  # Default mode to "Online"
+
+@app.post("/reg-submitForms/{form_id}", status_code=201)
+async def submit_form(
+    form_id: UUID,
+    payload: SubmissionPayload,
+    db: Session = Depends(get_db)
+):
+    # Retrieve the form based on the form_id
+    form = db.query(EventForm).filter(EventForm.id == form_id).first()
+    if not form:
+        raise HTTPException(status_code=404, detail="Form not found")
+
+    # Retrieve the event associated with the form
+    event = form.event
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    # Create a new form submission entry with the payload data
+    new_submission = EventFormSubmission(
+        form_id=form_id,
+        submission_data=payload.submission_data,
+        mode=payload.mode,
+        lunch=event.lunch,  # Default value from event
+        kit=event.kit  # Default value from event
+    )
+
+    # Save the new submission to the database
+    db.add(new_submission)
+    db.commit()
+    db.refresh(new_submission)
+
+    # Prepare data for QR code generation, including lunch/kit eligibility
+    user_data = payload.submission_data
+    user_data["lunch"] = new_submission.lunch
+    user_data["kit"] = new_submission.kit
+
+    # Generate QR code as binary data
+    qr_code_data = generate_qr_code(user_data)
+
+    # Save QR code binary data to the submission record
+    new_submission.qr_code = qr_code_data
+    db.commit()
+
+    return {"message": "Form submitted successfully", "submission_id": str(new_submission.id)}
+
+@app.delete("/delete_registration/{submission_id}", status_code=status.HTTP_200_OK)
+async def delete_registration(
+    submission_id: UUID,
+    db: Session = Depends(get_db),
+):
+    # Query the registration entry to ensure it exists
+    registration = db.query(EventFormSubmission).filter(EventFormSubmission.id == submission_id).first()
+
+    if not registration:
+        raise HTTPException(status_code=404, detail="Registration not found")
+
+    # Delete the registration entry
+    db.delete(registration)
+    db.commit()
+
+    return {"success": True, "message": "Registration deleted successfully"}
+
+
+@app.put("/update_id_card_fields/{event_id}/{form_id}")
+async def update_id_card_fields(
+    event_id: UUID,
+    form_id: UUID,
+    selected_fields: Optional[str] = Form(None),  # Optional fields for partial updates
+    custom_layout: Optional[str] = Form(None),
+    photo: Optional[UploadFile] = File(None),
+    db: Session = Depends(get_db)
+):
+    # Fetch existing IDCardFields entry
+    id_card_fields = db.query(IDCardFields).filter(
+        IDCardFields.event_id == event_id,
+        IDCardFields.form_id == form_id
+    ).first()
+
+    if not id_card_fields:
+        raise HTTPException(status_code=404, detail="ID card fields not found")
+
+    # Update selected fields if provided
+    if selected_fields is not None:
+        try:
+            id_card_fields.selected_fields = json.loads(selected_fields)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="Invalid JSON format for selected_fields")
+
+    # Update custom layout if provided
+    if custom_layout is not None:
+        try:
+            id_card_fields.custom_layout = json.loads(custom_layout)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="Invalid JSON format for custom_layout")
+
+    # Update photo if provided
+    if photo is not None:
+        try:
+            id_card_fields.photo = await photo.read()
+        except Exception as e:
+            raise HTTPException(status_code=500, detail="Error reading photo")
+
+    # Commit the updates to the database
+    db.commit()
+    db.refresh(id_card_fields)
+
+    return {"message": "ID card fields updated successfully", "id_card_fields_id": str(id_card_fields.id)}
+
+
+
+# TOO BE UNCOMMENTED WHEN RESTRICTED USERS REACT PAGE IS ACTIVE
+
+# @app.post("/register_subuser", response_class=JSONResponse)
+# async def register_subuser(
+#     sub_user: UserRegisterRequest,
+#     main_user_id: UUID,
+#     db: Session = Depends(get_db)
+# ):
+#     try:
+#         # Check if the sub-user email already exists
+#         existing_sub_user = db.query(SubUser).filter(SubUser.email == sub_user.email).first()
+#         if existing_sub_user:
+#             return JSONResponse(content={"success": False, "message": "Sub-user email already exists"}, status_code=400)
+
+#         # Ensure main user exists
+#         main_user = db.query(User).filter(User.id == main_user_id).first()
+#         if not main_user:
+#             return JSONResponse(content={"success": False, "message": "Main user does not exist"}, status_code=400)
+
+#         # Create a new sub-user linked to the main user
+#         new_sub_user = SubUser(
+#             main_user_id=main_user_id,
+#             name=sub_user.name,
+#             email=sub_user.email,
+#             password=sub_user.password,
+#             create_event=sub_user.create_event,
+#             create_form=sub_user.create_form,
+#             view_registrations=sub_user.view_registrations
+#         )
+#         db.add(new_sub_user)
+#         db.commit()
+#         db.refresh(new_sub_user)
+
+#         return JSONResponse(content={"success": True, "sub_user_id": str(new_sub_user.id), "message": "Sub-user registration successful"}, status_code=201)
+#     except Exception as e:
+#         return JSONResponse(content={"success": False, "message": str(e)}, status_code=500)
+
+
+# @app.post("/login", response_class=JSONResponse)
+# async def login_post(
+#     email: str = Form(...),
+#     password: str = Form(...),
+#     db: Session = Depends(get_db),
+#     Authorize: AuthJWT = Depends()
+# ):
+#     # Check if the email exists in main users
+#     user = db.query(User).filter(User.email == email).first()
+
+#     # Check if it's a sub-user if main user not found
+#     if not user:
+#         user = db.query(SubUser).filter(SubUser.email == email).first()
+#         if user and user.password == password:
+#             permissions = {
+#                 "create_event": user.create_event,
+#                 "create_form": user.create_form,
+#                 "view_registrations": user.view_registrations
+#             }
+#             # Generate token for sub-user
+#             access_token = Authorize.create_access_token(subject=str(user.id), user_claims={"permissions": permissions})
+
+#             return JSONResponse(content={
+#                 "success": True,
+#                 "message": "Sub-user login successful",
+#                 "access_token": access_token,
+#                 "user_id": str(user.id),
+#                 "user_email": user.email,
+#                 "permissions": permissions
+#             })
+    
+#     elif user and user.password == password and user.is_active:
+#         # Generate access token for main user with permissions
+#         permissions = {
+#             "create_event": user.create_event,
+#             "create_form": user.create_form,
+#             "view_registrations": user.view_registrations
+#         }
+#         access_token = Authorize.create_access_token(subject=str(user.id), user_claims={"permissions": permissions})
+        
+#         return JSONResponse(content={
+#             "success": True,
+#             "message": "Login successful",
+#             "access_token": access_token,
+#             "user_id": str(user.id),
+#             "user_email": user.email,
+#             "permissions": permissions
+#         })
+
+#     # Invalid login details
+#     raise HTTPException(status_code=401, detail="Invalid email or password")
+

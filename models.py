@@ -86,3 +86,23 @@ class IDCardFields(Base):
 
     event = relationship("Event", back_populates="id_card_fields")
     form = relationship("EventForm", back_populates="id_card_fields")
+
+
+from sqlalchemy import ForeignKey
+from sqlalchemy.orm import relationship
+
+# class SubUser(Base):
+#     __tablename__ = "sub_users"
+
+#     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+#     main_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+#     name = Column(String, nullable=True)
+#     email = Column(String, unique=True, index=True)
+#     password = Column(String)
+#     create_event = Column(Boolean, default=False)
+#     create_form = Column(Boolean, default=False)
+#     view_registrations = Column(Boolean, default=False)
+
+#     main_user = relationship("User", back_populates="sub_users")
+
+# User.sub_users = relationship("SubUser", back_populates="main_user", cascade="all, delete-orphan")
