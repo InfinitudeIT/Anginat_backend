@@ -395,7 +395,7 @@ async def edit_event(
 
 @app.post("/delete_event", status_code=status.HTTP_200_OK)
 async def delete_event(
-    event_id: str = Form(...),  # Get the event_id from form data
+    event_id: str = Form(...),
     db: Session = Depends(get_db),
     Authorize: AuthJWT = Depends()
 ):
@@ -409,6 +409,11 @@ async def delete_event(
         if not event:
             raise HTTPException(status_code=404, detail="Event not found or unauthorized")
 
+        # Ensure related submissions are deleted to avoid foreign key constraint issues
+        for form in event.forms:
+            db.query(EventFormSubmission).filter(EventFormSubmission.form_id == form.id).delete()
+            db.delete(form)
+
         # Delete the event
         db.delete(event)
         db.commit()
@@ -418,6 +423,8 @@ async def delete_event(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error deleting event: {str(e)}")
+
+
 
 
 @app.get("/event/{event_id}", response_class=JSONResponse)
@@ -936,6 +943,46 @@ async def update_id_card_fields(
     db.refresh(id_card_fields)
 
     return {"message": "ID card fields updated successfully", "id_card_fields_id": str(id_card_fields.id)}
+
+@app.put("/submission/{submission_id}", status_code=200)
+async def update_submission_details(
+    submission_id: UUID,
+    payload: dict,
+    db: Session = Depends(get_db)
+):
+    # Fetch the existing submission by ID
+    submission = db.query(EventFormSubmission).filter(EventFormSubmission.id == submission_id).first()
+
+    # Check if the submission exists
+    if not submission:
+        raise HTTPException(status_code=404, detail="Submission not found")
+
+    # Update fields from the payload
+    if "submission_data" in payload:
+        submission.submission_data = payload["submission_data"]
+    if "mode" in payload:
+        submission.mode = payload["mode"]
+
+    # Regenerate the QR code if submission_data has changed
+    if "submission_data" in payload:
+        user_data = payload["submission_data"]
+        user_data["lunch"] = submission.lunch
+        user_data["kit"] = submission.kit
+        qr_code_data = generate_qr_code(user_data)
+        submission.qr_code = qr_code_data
+
+    # Commit the changes
+    db.commit()
+    db.refresh(submission)
+
+    return {
+        "message": "Submission updated successfully",
+        "submission_id": str(submission.id),
+        "submission_data": submission.submission_data,
+        "mode": submission.mode,
+        "qr_code": submission.qr_code.decode('latin1') if submission.qr_code else None
+    }
+
 
 
 
