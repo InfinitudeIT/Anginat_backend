@@ -555,26 +555,36 @@ async def save_form(
     return {"success": True, "form_id": str(new_form.id), "message": "Form created successfully"}
 
 
-@app.post("/delete_form/{form_id}", status_code=status.HTTP_200_OK)
+from fastapi import HTTPException
+
+@app.delete("/delete_form/{form_id}", response_class=JSONResponse)
 async def delete_form(
-    form_id: UUID, 
-    db: Session = Depends(get_db), 
-    Authorize: AuthJWT = Depends()
+    form_id: UUID,
+    db: Session = Depends(get_db),
+    Authorize: AuthJWT = Depends(),
 ):
-    # Require authentication
+    """
+    Delete a specific form by its ID.
+    """
     Authorize.jwt_required()
+    current_user_id = Authorize.get_jwt_subject()
 
-    # Query the form to ensure it exists
+    # Check if the form exists
     form = db.query(EventForm).filter(EventForm.id == form_id).first()
-
     if not form:
         raise HTTPException(status_code=404, detail="Form not found")
+
+    # Ensure the user has the right to delete this form
+    event = db.query(Event).filter(Event.id == form.event_id).first()
+    if not event or event.user_id != current_user_id:
+        raise HTTPException(status_code=403, detail="Permission denied")
 
     # Delete the form
     db.delete(form)
     db.commit()
 
-    return {"success": True, "message": "Form deleted successfully"} 
+    return {"success": True, "form_id": str(form_id), "message": "Form deleted successfully"}
+
 
 from io import BytesIO
 import qrcode
