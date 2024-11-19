@@ -954,7 +954,7 @@ async def update_id_card_fields(
 
     return {"message": "ID card fields updated successfully", "id_card_fields_id": str(id_card_fields.id)}
 
-@app.put("/submission/{submission_id}", status_code=200)
+@app.put("/update-registration/{submission_id}", response_class=JSONResponse)
 async def update_submission_details(
     submission_id: UUID,
     payload: dict,
