@@ -16,6 +16,7 @@ class User(Base):
     password = Column(String)
     is_active = Column(Boolean, default=True)
     is_restricted = Column(Boolean, default=False)
+    is_superadmin = Column(Boolean, default=False)  # Super admin flag
     create_event = Column(Boolean, default=True)
     create_form = Column(Boolean, default=True)
     view_registrations = Column(Boolean, default=False)

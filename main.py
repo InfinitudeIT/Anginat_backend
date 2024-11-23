@@ -193,24 +193,27 @@ def authjwt_exception_handler(request, exc):
 
 @app.post("/login", response_class=JSONResponse)
 async def login_post(
-    email: str = Form(...),
+    username: str = Form(...),
     password: str = Form(...),
     db: Session = Depends(get_db),
     Authorize: AuthJWT = Depends()
 ):
-    user = db.query(User).filter(User.email == email).first()
-
+    # Check user
+    user = db.query(User).filter(User.email == username).first()
     if user and user.password == password and user.is_active:
-        # Generate access token with user ID and permissions in payload
-        access_token = Authorize.create_access_token(subject=str(user.id),
-                                                     user_claims={
-                                                         "permissions": {
-                                                             "create_event": user.create_event,
-                                                             "create_form": user.create_form,
-                                                             "view_registrations": user.view_registrations
-                                                         }
-                                                     })
-       
+        # Determine if the user is a super admin
+        superadmin_logged = user.is_superadmin
+
+        # Generate access token
+        access_token = Authorize.create_access_token(subject=str(user.id), user_claims={
+            "permissions": {
+                "create_event": user.create_event,
+                "create_form": user.create_form,
+                "view_registrations": user.view_registrations,
+            },
+            "is_superadmin": superadmin_logged
+        })
+
         # Return the token and user data
         return JSONResponse(content={
             "success": True,
@@ -221,11 +224,12 @@ async def login_post(
             "permissions": {
                 "create_event": user.create_event,
                 "create_form": user.create_form,
-                "view_registrations": user.view_registrations
-            }
+                "view_registrations": user.view_registrations,
+            },
+            "superadmin_logged": superadmin_logged
         })
-    else:
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    raise HTTPException(status_code=401, detail="Invalid username or password")
 
 
 @app.get("/protected-route")
@@ -508,10 +512,10 @@ async def update_form(
     form_id: UUID,
     payload: FormCreate,
     db: Session = Depends(get_db),
-    Authorize: AuthJWT = Depends(),
+    # Authorize: AuthJWT = Depends(),
 ):
-    Authorize.jwt_required()
-    current_user_id = Authorize.get_jwt_subject()
+    # Authorize.jwt_required()
+    # current_user_id = Authorize.get_jwt_subject()
 
     # Query the form to ensure it exists
     form = db.query(EventForm).filter(EventForm.id == form_id).first()
@@ -554,36 +558,30 @@ async def save_form(
 
     return {"success": True, "form_id": str(new_form.id), "message": "Form created successfully"}
 
-
-from fastapi import HTTPException
-
-@app.delete("/delete_form/{form_id}", response_class=JSONResponse)
+@app.post("/delete_form/{form_id}", response_class=JSONResponse)
 async def delete_form(
-    form_id: UUID,
+    form_id: UUID,  # Accept form_id directly from the path
     db: Session = Depends(get_db),
-    Authorize: AuthJWT = Depends(),
+    Authorize: AuthJWT = Depends()
 ):
-    """
-    Delete a specific form by its ID.
-    """
     Authorize.jwt_required()
     current_user_id = Authorize.get_jwt_subject()
 
-    # Check if the form exists
+    # Query the form to ensure it exists
     form = db.query(EventForm).filter(EventForm.id == form_id).first()
     if not form:
         raise HTTPException(status_code=404, detail="Form not found")
 
-    # Ensure the user has the right to delete this form
-    event = db.query(Event).filter(Event.id == form.event_id).first()
+    # Check authorization: Ensure the user is the owner of the event
+    event = form.event
     if not event or event.user_id != current_user_id:
-        raise HTTPException(status_code=403, detail="Permission denied")
+        raise HTTPException(status_code=403, detail="Not authorized to delete this form")
 
     # Delete the form
     db.delete(form)
     db.commit()
 
-    return {"success": True, "form_id": str(form_id), "message": "Form deleted successfully"}
+    return {"success": True, "message": "Form deleted successfully"}
 
 
 from io import BytesIO
@@ -908,92 +906,62 @@ async def delete_registration(
 
     return {"success": True, "message": "Registration deleted successfully"}
 
-
-@app.put("/update_id_card_fields/{event_id}/{form_id}")
-async def update_id_card_fields(
-    event_id: UUID,
-    form_id: UUID,
-    selected_fields: Optional[str] = Form(None),  # Optional fields for partial updates
-    custom_layout: Optional[str] = Form(None),
-    photo: Optional[UploadFile] = File(None),
-    db: Session = Depends(get_db)
-):
-    # Fetch existing IDCardFields entry
-    id_card_fields = db.query(IDCardFields).filter(
-        IDCardFields.event_id == event_id,
-        IDCardFields.form_id == form_id
-    ).first()
-
-    if not id_card_fields:
-        raise HTTPException(status_code=404, detail="ID card fields not found")
-
-    # Update selected fields if provided
-    if selected_fields is not None:
-        try:
-            id_card_fields.selected_fields = json.loads(selected_fields)
-        except json.JSONDecodeError:
-            raise HTTPException(status_code=400, detail="Invalid JSON format for selected_fields")
-
-    # Update custom layout if provided
-    if custom_layout is not None:
-        try:
-            id_card_fields.custom_layout = json.loads(custom_layout)
-        except json.JSONDecodeError:
-            raise HTTPException(status_code=400, detail="Invalid JSON format for custom_layout")
-
-    # Update photo if provided
-    if photo is not None:
-        try:
-            id_card_fields.photo = await photo.read()
-        except Exception as e:
-            raise HTTPException(status_code=500, detail="Error reading photo")
-
-    # Commit the updates to the database
-    db.commit()
-    db.refresh(id_card_fields)
-
-    return {"message": "ID card fields updated successfully", "id_card_fields_id": str(id_card_fields.id)}
-
-@app.put("/update-registration/{submission_id}", response_class=JSONResponse)
-async def update_submission_details(
+class UpdateRegistrationRequest(BaseModel):
+    submission_data: dict
+    mode: Optional[str] = "Online"
+@app.put("/update-registration/{submission_id}", response_model=dict)
+async def update_registration(
     submission_id: UUID,
-    payload: dict,
-    db: Session = Depends(get_db)
+    payload: UpdateRegistrationRequest,
+    db: Session = Depends(get_db),
+    Authorize: AuthJWT = Depends()
 ):
-    # Fetch the existing submission by ID
+    """
+    Update a specific event form submission by submission_id.
+    """
+    # Validate the JWT token
+    try:
+        Authorize.jwt_required()
+    except Exception as e:
+        raise HTTPException(status_code=401, detail="Token expired or invalid.")
+
+    # Fetch the submission entry from the database
     submission = db.query(EventFormSubmission).filter(EventFormSubmission.id == submission_id).first()
 
-    # Check if the submission exists
     if not submission:
-        raise HTTPException(status_code=404, detail="Submission not found")
+        raise HTTPException(status_code=404, detail="Submission not found.")
 
-    # Update fields from the payload
-    if "submission_data" in payload:
-        submission.submission_data = payload["submission_data"]
-    if "mode" in payload:
-        submission.mode = payload["mode"]
+    # Update submission data
+    if payload.submission_data:
+        submission.submission_data = payload.submission_data
 
-    # Regenerate the QR code if submission_data has changed
-    if "submission_data" in payload:
-        user_data = payload["submission_data"]
-        user_data["lunch"] = submission.lunch
-        user_data["kit"] = submission.kit
-        qr_code_data = generate_qr_code(user_data)
+    if payload.mode:
+        submission.mode = payload.mode
+
+    # Regenerate QR Code if submission_data is updated
+    if payload.submission_data:
+        updated_data = payload.submission_data
+        updated_data["lunch"] = submission.lunch
+        updated_data["kit"] = submission.kit
+        qr_code_data = generate_qr_code(updated_data)
         submission.qr_code = qr_code_data
 
-    # Commit the changes
-    db.commit()
-    db.refresh(submission)
+    # Save the updates
+    try:
+        db.commit()
+        db.refresh(submission)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error updating submission: {str(e)}")
 
     return {
-        "message": "Submission updated successfully",
+        "success": True,
+        "message": "Submission updated successfully.",
         "submission_id": str(submission.id),
         "submission_data": submission.submission_data,
         "mode": submission.mode,
-        "qr_code": submission.qr_code.decode('latin1') if submission.qr_code else None
+        "qr_code": submission.qr_code.decode('latin1') if submission.qr_code else None,
     }
-
-
 
 
 # TOO BE UNCOMMENTED WHEN RESTRICTED USERS REACT PAGE IS ACTIVE
@@ -1086,3 +1054,63 @@ async def update_submission_details(
 #     # Invalid login details
 #     raise HTTPException(status_code=401, detail="Invalid email or password")
 
+@app.get("/admin_events", response_class=JSONResponse)
+async def get_all_events(
+    db: Session = Depends(get_db),
+    Authorize: AuthJWT = Depends()
+):
+    Authorize.jwt_required()
+    current_user_id = Authorize.get_jwt_subject()
+
+    # Check if the user is a super admin
+    user = db.query(User).filter(User.id == current_user_id).first()
+    if not user or not user.is_superadmin:
+        raise HTTPException(status_code=403, detail="Unauthorized access")
+
+    # Fetch all events
+    events = db.query(Event).all()
+    return {
+        "success": True,
+        "events": [
+            {
+                "event_id": str(event.id),
+                "event_name": event.event_name,
+                "venue_address": event.venue_address,
+                "event_date": event.event_date.isoformat(),
+                "status": event.status.name
+            }
+            for event in events
+        ]
+    }
+
+
+@app.get("/admin_registrations", response_class=JSONResponse)
+async def get_all_registrations(
+    db: Session = Depends(get_db),
+    Authorize: AuthJWT = Depends()
+):
+    Authorize.jwt_required()
+    current_user_id = Authorize.get_jwt_subject()
+
+    # Check if the user is a super admin
+    user = db.query(User).filter(User.id == current_user_id).first()
+    if not user or not user.is_superadmin:
+        raise HTTPException(status_code=403, detail="Unauthorized access")
+
+    # Fetch all registrations
+    registrations = db.query(EventFormSubmission).all()
+    return {
+        "success": True,
+        "registrations": [
+            {
+                "submission_id": str(reg.id),
+                "form_id": str(reg.form_id),
+                "submission_data": reg.submission_data,
+                "mode": reg.mode,
+                "lunch": reg.lunch,
+                "kit": reg.kit
+            }
+            for reg in registrations
+        ],
+        "count": len(registrations)
+    }
