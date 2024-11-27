@@ -193,13 +193,13 @@ def authjwt_exception_handler(request, exc):
 
 @app.post("/login", response_class=JSONResponse)
 async def login_post(
-    username: str = Form(...),
+    email: str = Form(...),
     password: str = Form(...),
     db: Session = Depends(get_db),
     Authorize: AuthJWT = Depends()
 ):
     # Check user
-    user = db.query(User).filter(User.email == username).first()
+    user = db.query(User).filter(User.email == email).first()
     if user and user.password == password and user.is_active:
         # Determine if the user is a super admin
         superadmin_logged = user.is_superadmin
