@@ -9,7 +9,7 @@ from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from starlette.middleware.sessions import SessionMiddleware
 from itsdangerous import URLSafeTimedSerializer
 from database import SessionLocal, engine
-from models import EventFormSubmission, User, Event, EventForm, IDCardFields
+from models import EventFormSubmission, User, Event, EventForm, IDCardFields, SubUser
 from schemas import UserSchema, EventFormCreate, UserDetails, EventCreate, IDCardFieldsCreate
 from database import Base
 from datetime import date
@@ -1114,3 +1114,34 @@ async def get_all_registrations(
         ],
         "count": len(registrations)
     }
+
+
+@app.post("/subuser", response_class=JSONResponse)
+async def create_subuser(
+    name: str = Form(...),
+    email: str = Form(...),
+    password: str = Form(...),
+    create_event: bool = Form(False),
+    create_form: bool = Form(False),
+    view_registrations: bool = Form(False),
+    main_user: User = Depends(get_current_user),  # Assuming you have user authentication
+    db: Session = Depends(get_db)
+):
+    if not main_user.is_active:
+        raise HTTPException(status_code=403, detail="Main user is not active")
+    
+    subuser = SubUser(
+        main_user_id=main_user.id,
+        name=name,
+        email=email,
+        password=password,  # Ensure to hash the password
+        create_event=create_event,
+        create_form=create_form,
+        view_registrations=view_registrations,
+    )
+    db.add(subuser)
+    db.commit()
+    db.refresh(subuser)
+
+    return JSONResponse(content={"success": True, "subuser_id": str(subuser.id)})
+

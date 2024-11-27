@@ -21,7 +21,15 @@ class User(Base):
     create_form = Column(Boolean, default=True)
     view_registrations = Column(Boolean, default=False)
 
+    # New field for sub-user support
+    main_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
+    # Existing relationships
     events = relationship("Event", back_populates="owner")
+
+    # New relationship for sub-users
+    sub_users = relationship("User", backref="main_user", remote_side=[id])
+
 
 
 class Event(Base):
@@ -92,18 +100,21 @@ class IDCardFields(Base):
 from sqlalchemy import ForeignKey
 from sqlalchemy.orm import relationship
 
-# class SubUser(Base):
-#     __tablename__ = "sub_users"
 
-#     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-#     main_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-#     name = Column(String, nullable=True)
-#     email = Column(String, unique=True, index=True)
-#     password = Column(String)
-#     create_event = Column(Boolean, default=False)
-#     create_form = Column(Boolean, default=False)
-#     view_registrations = Column(Boolean, default=False)
+class SubUser(Base):
+    __tablename__ = "sub_users"
 
-#     main_user = relationship("User", back_populates="sub_users")
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    main_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    name = Column(String, nullable=True)
+    email = Column(String, unique=True, index=True)
+    password = Column(String)
+    create_event = Column(Boolean, default=False)
+    create_form = Column(Boolean, default=False)
+    view_registrations = Column(Boolean, default=False)
 
-# User.sub_users = relationship("SubUser", back_populates="main_user", cascade="all, delete-orphan")
+    main_user = relationship("User", back_populates="sub_users")
+
+User.sub_users = relationship("SubUser", back_populates="main_user", cascade="all, delete-orphan")
+
+
