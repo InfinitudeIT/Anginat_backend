@@ -1219,5 +1219,37 @@ async def get_subusers(user_id: str, db: Session = Depends(get_db)):
     # Step 4: Return the response
     return JSONResponse(content={"success": True, "subusers": subusers_list})
 
+@app.get("/subuser/{sub_user_id}", response_class=JSONResponse)
+async def get_subuser_details(
+    sub_user_id: UUID,  # Sub-user ID as a URL parameter
+    db: Session = Depends(get_db),
+    Authorize: AuthJWT = Depends()
+):
+    try:
+        # Validate the JWT token
+        Authorize.jwt_required()
+        current_user_id = Authorize.get_jwt_subject()
+
+        # Retrieve the sub-user from the database
+        subuser = db.query(SubUser).filter(SubUser.id == sub_user_id, SubUser.main_user_id == current_user_id).first()
+        if not subuser:
+            raise HTTPException(status_code=404, detail="Sub-user not found or unauthorized")
+
+        # Prepare the response with sub-user details
+        subuser_data = {
+            "sub_user_id": str(subuser.id),
+            "name": subuser.name,
+            "email": subuser.email,
+            "create_event": subuser.create_event,
+            "create_form": subuser.create_form,
+            "view_registrations": subuser.view_registrations,
+        }
+
+        return JSONResponse(content={"success": True, "subuser": subuser_data}, status_code=200)
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving sub-user: {str(e)}")
+
+
 
 
