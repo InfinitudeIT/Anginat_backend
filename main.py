@@ -1116,25 +1116,32 @@ async def get_all_registrations(
     }
 
 
-@app.post("/subuser", response_class=JSONResponse)
+@app.post("/user/{user_id}/subuser", response_class=JSONResponse)
 async def create_subuser(
+    user_id: str,  # Accept the main user's ID as a URL parameter
     name: str = Form(...),
     email: str = Form(...),
     password: str = Form(...),
     create_event: bool = Form(False),
     create_form: bool = Form(False),
     view_registrations: bool = Form(False),
-    main_user: User = Depends(get_current_user),  # Assuming you have user authentication
     db: Session = Depends(get_db)
 ):
+    # Step 1: Validate the main user using the user_id
+    main_user = db.query(User).filter(User.id == user_id).first()
+    if not main_user:
+        raise HTTPException(status_code=404, detail="Main user not found")
     if not main_user.is_active:
-        raise HTTPException(status_code=403, detail="Main user is not active")
-    
+        raise HTTPException(status_code=403, detail="Main user account is inactive")
+
+
+
+    # Step 3: Create the sub-user with a reference to the main user
     subuser = SubUser(
-        main_user_id=main_user.id,
+        main_user_id=main_user.id,  # Use the URL parameter user_id as foreign key
         name=name,
         email=email,
-        password=password,  # Ensure to hash the password
+        password=password,
         create_event=create_event,
         create_form=create_form,
         view_registrations=view_registrations,
@@ -1143,5 +1150,7 @@ async def create_subuser(
     db.commit()
     db.refresh(subuser)
 
+    # Step 4: Return success response
     return JSONResponse(content={"success": True, "subuser_id": str(subuser.id)})
+
 
