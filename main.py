@@ -1153,4 +1153,71 @@ async def create_subuser(
     # Step 4: Return success response
     return JSONResponse(content={"success": True, "subuser_id": str(subuser.id)})
 
+@app.put("/subuser/{sub_user_id}", response_class=JSONResponse)
+async def edit_subuser(
+    sub_user_id: UUID,  # Sub-user ID as a URL parameter
+    name: str = Form(...),
+    email: str = Form(...),
+    password: str = Form(...),
+    create_event: bool = Form(...),
+    create_form: bool = Form(...),
+    view_registrations: bool = Form(...),
+    db: Session = Depends(get_db),
+    Authorize: AuthJWT = Depends()
+):
+    try:
+        # Validate the JWT token
+        Authorize.jwt_required()
+        current_user_id = Authorize.get_jwt_subject()
+
+        # Retrieve the sub-user from the database
+        subuser = db.query(SubUser).filter(SubUser.id == sub_user_id, SubUser.main_user_id == current_user_id).first()
+        if not subuser:
+            raise HTTPException(status_code=404, detail="Sub-user not found or unauthorized")
+
+        # Update the sub-user's details
+        subuser.name = name
+        subuser.email = email
+        subuser.password = password  # Optionally hash the password here
+        subuser.create_event = create_event
+        subuser.create_form = create_form
+        subuser.view_registrations = view_registrations
+
+        # Commit the changes to the database
+        db.commit()
+        db.refresh(subuser)
+
+        return JSONResponse(content={"success": True, "message": "Sub-user updated successfully"}, status_code=200)
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error updating sub-user: {str(e)}")
+
+@app.get("/user/{user_id}/subusers", response_class=JSONResponse)
+async def get_subusers(user_id: str, db: Session = Depends(get_db)):
+    # Step 1: Validate the main user using the user_id
+    main_user = db.query(User).filter(User.id == user_id).first()
+    if not main_user:
+        raise HTTPException(status_code=404, detail="Main user not found")
+    
+    # Step 2: Fetch all sub-users associated with the main user
+    subusers = db.query(SubUser).filter(SubUser.main_user_id == user_id).all()
+
+    # Step 3: Format the response
+    subusers_list = [
+        {
+            "sub_user_id": str(subuser.id),
+            "name": subuser.name,
+            "email": subuser.email,
+            "create_event": subuser.create_event,
+            "create_form": subuser.create_form,
+            "view_registrations": subuser.view_registrations,
+        }
+        for subuser in subusers
+    ]
+
+    # Step 4: Return the response
+    return JSONResponse(content={"success": True, "subusers": subusers_list})
+
+
 
