@@ -1153,9 +1153,10 @@ async def create_subuser(
     # Step 4: Return success response
     return JSONResponse(content={"success": True, "subuser_id": str(subuser.id)})
 
-@app.put("/subuser/{sub_user_id}", response_class=JSONResponse)
+@app.put("/subuser/{sub_user_id}/{user_id}", response_class=JSONResponse)
 async def edit_subuser(
-    sub_user_id: UUID,  # Sub-user ID as a URL parameter
+    sub_user_id: UUID,
+    user_id: str,# Sub-user ID as a URL parameter
     name: str = Form(...),
     email: str = Form(...),
     password: str = Form(...),
@@ -1166,9 +1167,8 @@ async def edit_subuser(
     Authorize: AuthJWT = Depends()
 ):
     try:
-        # Validate the JWT token
-        Authorize.jwt_required()
-        current_user_id = Authorize.get_jwt_subject()
+    
+        current_user_id = user_id
 
         # Retrieve the sub-user from the database
         subuser = db.query(SubUser).filter(SubUser.id == sub_user_id, SubUser.main_user_id == current_user_id).first()
@@ -1209,6 +1209,7 @@ async def get_subusers(user_id: str, db: Session = Depends(get_db)):
             "sub_user_id": str(subuser.id),
             "name": subuser.name,
             "email": subuser.email,
+            "password": subuser.password,
             "create_event": subuser.create_event,
             "create_form": subuser.create_form,
             "view_registrations": subuser.view_registrations,
@@ -1219,16 +1220,16 @@ async def get_subusers(user_id: str, db: Session = Depends(get_db)):
     # Step 4: Return the response
     return JSONResponse(content={"success": True, "subusers": subusers_list})
 
-@app.get("/subuser/{sub_user_id}", response_class=JSONResponse)
+@app.get("/subuser/{sub_user_id}/{user_id}", response_class=JSONResponse)
 async def get_subuser_details(
-    sub_user_id: UUID,  # Sub-user ID as a URL parameter
+    sub_user_id: UUID,
+    user_id: str,# Sub-user ID as a URL parameter
     db: Session = Depends(get_db),
     Authorize: AuthJWT = Depends()
 ):
     try:
-        # Validate the JWT token
-        Authorize.jwt_required()
-        current_user_id = Authorize.get_jwt_subject()
+       
+        current_user_id = user_id
 
         # Retrieve the sub-user from the database
         subuser = db.query(SubUser).filter(SubUser.id == sub_user_id, SubUser.main_user_id == current_user_id).first()
@@ -1240,6 +1241,7 @@ async def get_subuser_details(
             "sub_user_id": str(subuser.id),
             "name": subuser.name,
             "email": subuser.email,
+            "password": subuser.password,
             "create_event": subuser.create_event,
             "create_form": subuser.create_form,
             "view_registrations": subuser.view_registrations,
