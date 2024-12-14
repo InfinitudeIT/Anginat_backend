@@ -19,7 +19,7 @@ class User(Base):
     is_superadmin = Column(Boolean, default=False)  # Super admin flag
     create_event = Column(Boolean, default=True)
     create_form = Column(Boolean, default=True)
-    view_registrations = Column(Boolean, default=False)
+    view_registrations = Column(Boolean, default=True)
 
     # New field for sub-user support
     main_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)

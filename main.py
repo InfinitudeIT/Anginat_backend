@@ -198,23 +198,48 @@ async def login_post(
     db: Session = Depends(get_db),
     Authorize: AuthJWT = Depends()
 ):
-    # Check user
-    user = db.query(User).filter(User.email == email).first()
-    if user and user.password == password and user.is_active:
-        # Determine if the user is a super admin
-        superadmin_logged = user.is_superadmin
+    # Function to check and return user data
+    def get_user_data(email: str, password: str):
+        # Check in `users` table
+        user = db.query(User).filter(User.email == email).first()
+        if user and user.password == password and user.is_active:
+            return {
+                "user": user,
+                "is_subuser": False
+            }
 
-        # Generate access token
-        access_token = Authorize.create_access_token(subject=str(user.id), user_claims={
-            "permissions": {
-                "create_event": user.create_event,
-                "create_form": user.create_form,
-                "view_registrations": user.view_registrations,
-            },
-            "is_superadmin": superadmin_logged
-        })
+        # Check in `sub_users` table
+        subuser = db.query(SubUser).filter(SubUser.email == email).first()
+        if subuser and subuser.password == password:
+            return {
+                "user": subuser,
+                "is_subuser": True
+            }
 
-        # Return the token and user data
+        return None
+
+    # Authenticate the user
+    auth_result = get_user_data(email, password)
+
+    if auth_result:
+        user = auth_result["user"]
+        is_subuser = auth_result["is_subuser"]
+
+        # Create access token
+        access_token = Authorize.create_access_token(
+            subject=str(user.id),
+            user_claims={
+                "permissions": {
+                    "create_event": user.create_event,
+                    "create_form": user.create_form,
+                    "view_registrations": user.view_registrations,
+                },
+                "is_superadmin": getattr(user, "is_superadmin", False) if not is_subuser else False,
+                "is_subuser": is_subuser,
+            }
+        )
+
+        # Prepare response
         return JSONResponse(content={
             "success": True,
             "message": "Login successful",
@@ -226,10 +251,13 @@ async def login_post(
                 "create_form": user.create_form,
                 "view_registrations": user.view_registrations,
             },
-            "superadmin_logged": superadmin_logged
+            "is_subuser": is_subuser,
+            "superadmin_logged": getattr(user, "is_superadmin", False) if not is_subuser else None,
         })
 
+    # If no user is found or authentication fails
     raise HTTPException(status_code=401, detail="Invalid username or password")
+
 
 
 @app.get("/protected-route")
@@ -1253,5 +1281,44 @@ async def get_subuser_details(
         raise HTTPException(status_code=500, detail=f"Error retrieving sub-user: {str(e)}")
 
 
+@app.get("/count_admin_events/{super_user_id}", response_class=JSONResponse)
+async def get_all_events_count(
+    super_user_id: UUID,
+    db: Session = Depends(get_db),
+    # Authorize: AuthJWT = Depends()
+):
+    # Authorize.jwt_required()
+    # current_user_id = Authorize.get_jwt_subject()
+
+    # Check if the user is a super admin
+    user = db.query(User).filter(User.id == super_user_id).first()
+    if not user or not user.is_superadmin:
+        raise HTTPException(status_code=403, detail="Unauthorized access")
+
+    # Get the count of all events
+    event_count = db.query(Event).count()
+
+    return {
+        "success": True,
+        "event_count": event_count
+    }
 
 
+@app.get("/admin_registrations/{super_user_id}", response_class=JSONResponse)
+async def get_all_registrations_count(
+    super_user_id: UUID,
+    db: Session = Depends(get_db)
+    
+):
+    # Check if the user is a super admin
+    user = db.query(User).filter(User.id == super_user_id).first()
+    if not user or not user.is_superadmin:
+        raise HTTPException(status_code=403, detail="Unauthorized access")
+
+    # Get the count of all registrations
+    registration_count = db.query(EventFormSubmission).count()
+
+    return {
+        "success": True,
+        "registration_count": registration_count
+    }
