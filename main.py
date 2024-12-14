@@ -1281,7 +1281,7 @@ async def get_subuser_details(
         raise HTTPException(status_code=500, detail=f"Error retrieving sub-user: {str(e)}")
 
 
-@app.get("/count_admin_events/{super_user_id}", response_class=JSONResponse)
+@app.get("/admin_dashboard/{super_user_id}", response_class=JSONResponse)
 async def get_all_events_count(
     super_user_id: UUID,
     db: Session = Depends(get_db),
@@ -1297,28 +1297,12 @@ async def get_all_events_count(
 
     # Get the count of all events
     event_count = db.query(Event).count()
-
-    return {
-        "success": True,
-        "event_count": event_count
-    }
-
-
-@app.get("/admin_registrations/{super_user_id}", response_class=JSONResponse)
-async def get_all_registrations_count(
-    super_user_id: UUID,
-    db: Session = Depends(get_db)
-    
-):
-    # Check if the user is a super admin
-    user = db.query(User).filter(User.id == super_user_id).first()
-    if not user or not user.is_superadmin:
-        raise HTTPException(status_code=403, detail="Unauthorized access")
-
-    # Get the count of all registrations
     registration_count = db.query(EventFormSubmission).count()
+    users_count = db.query(User).count()
 
     return {
         "success": True,
-        "registration_count": registration_count
+        "event_count": event_count,
+        "registration_count" :registration_count,
+        "users_count": users_count
     }
