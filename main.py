@@ -917,7 +917,7 @@ async def submit_form(
 
     return {"message": "Form submitted successfully", "submission_id": str(new_submission.id)}
 
-@app.delete("/delete_registration/{submission_id}", status_code=status.HTTP_200_OK)
+@app.post("/delete_registration/{submission_id}", status_code=status.HTTP_200_OK)
 async def delete_registration(
     submission_id: UUID,
     db: Session = Depends(get_db),
@@ -942,16 +942,16 @@ async def update_registration(
     submission_id: UUID,
     payload: UpdateRegistrationRequest,
     db: Session = Depends(get_db),
-    Authorize: AuthJWT = Depends()
+    # Authorize: AuthJWT = Depends()
 ):
     """
     Update a specific event form submission by submission_id.
     """
     # Validate the JWT token
-    try:
-        Authorize.jwt_required()
-    except Exception as e:
-        raise HTTPException(status_code=401, detail="Token expired or invalid.")
+    # try:
+    #     Authorize.jwt_required()
+    # except Exception as e:
+    #     raise HTTPException(status_code=401, detail="Token expired or invalid.")
 
     # Fetch the submission entry from the database
     submission = db.query(EventFormSubmission).filter(EventFormSubmission.id == submission_id).first()
@@ -991,96 +991,6 @@ async def update_registration(
         "qr_code": submission.qr_code.decode('latin1') if submission.qr_code else None,
     }
 
-
-# TOO BE UNCOMMENTED WHEN RESTRICTED USERS REACT PAGE IS ACTIVE
-
-# @app.post("/register_subuser", response_class=JSONResponse)
-# async def register_subuser(
-#     sub_user: UserRegisterRequest,
-#     main_user_id: UUID,
-#     db: Session = Depends(get_db)
-# ):
-#     try:
-#         # Check if the sub-user email already exists
-#         existing_sub_user = db.query(SubUser).filter(SubUser.email == sub_user.email).first()
-#         if existing_sub_user:
-#             return JSONResponse(content={"success": False, "message": "Sub-user email already exists"}, status_code=400)
-
-#         # Ensure main user exists
-#         main_user = db.query(User).filter(User.id == main_user_id).first()
-#         if not main_user:
-#             return JSONResponse(content={"success": False, "message": "Main user does not exist"}, status_code=400)
-
-#         # Create a new sub-user linked to the main user
-#         new_sub_user = SubUser(
-#             main_user_id=main_user_id,
-#             name=sub_user.name,
-#             email=sub_user.email,
-#             password=sub_user.password,
-#             create_event=sub_user.create_event,
-#             create_form=sub_user.create_form,
-#             view_registrations=sub_user.view_registrations
-#         )
-#         db.add(new_sub_user)
-#         db.commit()
-#         db.refresh(new_sub_user)
-
-#         return JSONResponse(content={"success": True, "sub_user_id": str(new_sub_user.id), "message": "Sub-user registration successful"}, status_code=201)
-#     except Exception as e:
-#         return JSONResponse(content={"success": False, "message": str(e)}, status_code=500)
-
-
-# @app.post("/login", response_class=JSONResponse)
-# async def login_post(
-#     email: str = Form(...),
-#     password: str = Form(...),
-#     db: Session = Depends(get_db),
-#     Authorize: AuthJWT = Depends()
-# ):
-#     # Check if the email exists in main users
-#     user = db.query(User).filter(User.email == email).first()
-
-#     # Check if it's a sub-user if main user not found
-#     if not user:
-#         user = db.query(SubUser).filter(SubUser.email == email).first()
-#         if user and user.password == password:
-#             permissions = {
-#                 "create_event": user.create_event,
-#                 "create_form": user.create_form,
-#                 "view_registrations": user.view_registrations
-#             }
-#             # Generate token for sub-user
-#             access_token = Authorize.create_access_token(subject=str(user.id), user_claims={"permissions": permissions})
-
-#             return JSONResponse(content={
-#                 "success": True,
-#                 "message": "Sub-user login successful",
-#                 "access_token": access_token,
-#                 "user_id": str(user.id),
-#                 "user_email": user.email,
-#                 "permissions": permissions
-#             })
-    
-#     elif user and user.password == password and user.is_active:
-#         # Generate access token for main user with permissions
-#         permissions = {
-#             "create_event": user.create_event,
-#             "create_form": user.create_form,
-#             "view_registrations": user.view_registrations
-#         }
-#         access_token = Authorize.create_access_token(subject=str(user.id), user_claims={"permissions": permissions})
-        
-#         return JSONResponse(content={
-#             "success": True,
-#             "message": "Login successful",
-#             "access_token": access_token,
-#             "user_id": str(user.id),
-#             "user_email": user.email,
-#             "permissions": permissions
-#         })
-
-#     # Invalid login details
-#     raise HTTPException(status_code=401, detail="Invalid email or password")
 
 @app.get("/admin_events", response_class=JSONResponse)
 async def get_all_events(
@@ -1305,4 +1215,190 @@ async def get_all_events_count(
         "event_count": event_count,
         "registration_count" :registration_count,
         "users_count": users_count
+    }
+
+@app.get("/admin_edit_event/{event_id}", response_class=JSONResponse)
+async def get_event(event_id: str, db: Session = Depends(get_db), Authorize: AuthJWT = Depends()):
+    try:
+
+        event = db.query(Event).filter(Event.id == event_id).first()
+
+        if not event:
+            raise HTTPException(status_code=404, detail="Event not found")
+
+        event_data = {
+            "event_name": event.event_name,
+            "venue_address": event.venue_address,
+            "event_date": event.event_date.strftime('%Y-%m-%d'),
+            "audience": event.audience,
+            "delegates": event.delegates,
+            "speaker": event.speaker,
+            "nri": event.nri,
+            "lunch": event.lunch,
+            "kit": event.kit
+        }
+
+        return JSONResponse(content={"success": True, "event": event_data}, status_code=200)
+    except Exception as e:
+        return JSONResponse(content={"success": False, "message": str(e)}, status_code=500)
+    
+@app.put("/admin_update_event/{event_id}", response_class=JSONResponse)
+async def edit_event(
+    event_id: UUID,
+    event_name: str = Form(...),
+    venue_address: str = Form(...),
+    event_date: str = Form(...),
+    audience: bool = Form(...),
+    delegates: bool = Form(...),
+    speaker: bool = Form(...),
+    nri: bool = Form(...),
+    lunch: bool = Form(...),
+    kit: bool = Form(...),
+    db: Session = Depends(get_db),
+    
+):
+    try:
+
+        # Retrieve the event from the database
+        event = db.query(Event).filter(Event.id == event_id).first()
+        if not event:
+            raise HTTPException(status_code=404, detail="Event not found or unauthorized")
+
+        # Update the event with new data
+        event.event_name = event_name
+        event.venue_address = venue_address
+        event.event_date = event_date  # Convert to date if necessary
+        event.audience = audience
+        event.delegates = delegates
+        event.speaker = speaker
+        event.nri = nri
+        event.lunch = lunch
+        event.kit = kit
+
+        # Commit the changes to the database
+        db.commit()
+        db.refresh(event)
+
+        return JSONResponse(content={"success": True, "message": "Event updated successfully"}, status_code=200)
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error updating event: {str(e)}")
+
+
+@app.post("/admin_delete_event", status_code=status.HTTP_200_OK)
+async def delete_event(
+    event_id: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    try:
+        
+
+        # Check if the event exists and is owned by the current user
+        event = db.query(Event).filter(Event.id == event_id).first()
+        if not event:
+            raise HTTPException(status_code=404, detail="Event not found or unauthorized")
+
+        # Ensure related submissions are deleted to avoid foreign key constraint issues
+        for form in event.forms:
+            db.query(EventFormSubmission).filter(EventFormSubmission.form_id == form.id).delete()
+            db.delete(form)
+
+        # Delete the event
+        db.delete(event)
+        db.commit()
+
+        return JSONResponse(content={"success": True, "message": "Event deleted successfully"}, status_code=200)
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error deleting event: {str(e)}")
+
+@app.post("/admin_delete_registration/{submission_id}", status_code=status.HTTP_200_OK)
+async def delete_registration(
+    submission_id: UUID,
+    db: Session = Depends(get_db),
+):
+    # Query the registration entry to ensure it exists
+    registration = db.query(EventFormSubmission).filter(EventFormSubmission.id == submission_id).first()
+
+    if not registration:
+        raise HTTPException(status_code=404, detail="Registration not found")
+
+    # Delete the registration entry
+    db.delete(registration)
+    db.commit()
+
+    return {"success": True, "message": "Registration deleted successfully"}
+
+class UpdateRegistrationRequest(BaseModel):
+    submission_data: dict
+    mode: Optional[str] = "Online"
+@app.put("/admin_update-registration/{submission_id}", response_model=dict)
+async def update_registration(
+    submission_id: UUID,
+    payload: UpdateRegistrationRequest,
+    db: Session = Depends(get_db),
+    # Authorize: AuthJWT = Depends()
+):
+    """
+    Update a specific event form submission by submission_id.
+    """
+
+    # Fetch the submission entry from the database
+    submission = db.query(EventFormSubmission).filter(EventFormSubmission.id == submission_id).first()
+
+    if not submission:
+        raise HTTPException(status_code=404, detail="Submission not found.")
+
+    # Update submission data
+    if payload.submission_data:
+        submission.submission_data = payload.submission_data
+
+    if payload.mode:
+        submission.mode = payload.mode
+
+    # Regenerate QR Code if submission_data is updated
+    if payload.submission_data:
+        updated_data = payload.submission_data
+        updated_data["lunch"] = submission.lunch
+        updated_data["kit"] = submission.kit
+        qr_code_data = generate_qr_code(updated_data)
+        submission.qr_code = qr_code_data
+
+    # Save the updates
+    try:
+        db.commit()
+        db.refresh(submission)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error updating submission: {str(e)}")
+
+    return {
+        "success": True,
+        "message": "Submission updated successfully.",
+        "submission_id": str(submission.id),
+        "submission_data": submission.submission_data,
+        "mode": submission.mode,
+        "qr_code": submission.qr_code.decode('latin1') if submission.qr_code else None,
+    }
+
+
+@app.get("/admin_form_by_event/{event_id}", response_class=JSONResponse)
+async def get_form_by_event(
+    event_id: UUID, 
+    db: Session = Depends(get_db)
+):
+    # Query the first form using the event_id
+    form = db.query(EventForm).filter(EventForm.event_id == event_id).first()
+
+    if not form:
+        raise HTTPException(status_code=200)
+
+    # Return the form data in JSON format
+    return {
+        "form_name": form.form_name,
+        "form_data": form.form_data,
+        "event_id": str(form.event_id),
+        "form_id": str(form.id)
     }
