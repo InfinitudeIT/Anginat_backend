@@ -1402,3 +1402,51 @@ async def get_form_by_event(
         "event_id": str(form.event_id),
         "form_id": str(form.id)
     }
+
+@app.post("/resetpassword", response_class=JSONResponse)
+async def reset_password(
+    email: str = Form(...),
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    # Check if passwords match
+    if new_password != confirm_password:
+        raise HTTPException(status_code=400, detail="Passwords do not match")
+
+    # Validate the user in the `users` table
+    user = db.query(User).filter(User.email == email).first()
+    if user:
+        if not user.is_active:
+            raise HTTPException(status_code=403, detail="Account is inactive")
+        
+        # Update the password
+        user.password = new_password  # Consider hashing the password here
+        db.commit()
+
+        
+
+        return JSONResponse(content={
+            "success": True,
+            "message": "Password reset successfully",
+            "user_type": "User",
+            "user_email": user.email,
+            "user_password":user.password
+        })
+
+    # Validate the user in the `sub_users` table
+    subuser = db.query(SubUser).filter(SubUser.email == email).first()
+    if subuser:
+        # Update the password
+        subuser.password = new_password  # Consider hashing the password here
+        db.commit()
+
+        return JSONResponse(content={
+            "success": True,
+            "message": "Password reset successfully",
+            "user_type": "SubUser",
+            "user_email": subuser.email
+        })
+
+    # If no user is found
+    raise HTTPException(status_code=404, detail="Email not found")
