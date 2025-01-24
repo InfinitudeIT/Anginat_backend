@@ -1450,3 +1450,91 @@ async def reset_password(
 
     # If no user is found
     raise HTTPException(status_code=404, detail="Email not found")
+
+
+# @app.get("/get_names/{form_id}", response_class=JSONResponse)
+# async def get_names_by_form_id(
+#     form_id: UUID,
+#     db: Session = Depends(get_db),
+# ):
+#     try:
+#         # Query to find the submission with the given form_id
+#         form_submission = db.query(EventFormSubmission).filter(EventFormSubmission.form_id == form_id).first()
+
+#         if form_submission:
+#             # Extract "Name" values from the JSONB column (submission_data)
+#             submission_data = form_submission.submission_data  # Assuming submission_data is already parsed as a dictionary
+#             if submission_data and "Name" in submission_data:
+#                 name = submission_data["Name"]
+#                 response_data = {
+#                     "success": True,
+#                     "message": "Names retrieved successfully",
+#                     "Form_id": str(form_submission.form_id),
+#                     "Name": name,
+#                 }
+#                 return JSONResponse(content=response_data, status_code=200)
+#             else:
+#                 return JSONResponse(
+#                     content={"success": False, "message": "No Name field found in submission data"},
+#                     status_code=404,
+#                 )
+#         else:
+#             return JSONResponse(
+#                 content={"success": False, "message": "Form submission not found"},
+#                 status_code=404,
+#             )
+#     except Exception as e:
+#         return JSONResponse(
+#             content={"success": False, "message": f"An error occurred: {str(e)}"},
+#             status_code=500,
+#         )
+
+
+
+@app.get("/get_submission_data/{form_id}", response_class=JSONResponse)
+async def get_submission_data_by_form_id(
+    form_id: UUID,
+    db: Session = Depends(get_db),
+):
+    try:
+        # Query to get all submissions for the given form_id
+        submissions = db.query(EventFormSubmission).filter(EventFormSubmission.form_id == form_id).all()
+
+        if submissions:
+            # Prepare the response data
+            response_data = []
+            for submission in submissions:
+                submission_data = submission.submission_data
+                if submission_data:
+                    # Check if lunch and kit are set, default to False if not
+                    lunch_status = submission.lunch if submission.lunch is not None else False
+                    kit_status = submission.kit if submission.kit is not None else False
+                    
+                    # Append data for each submission
+                    response_data.append({
+                        "submission_data": submission_data,  # Nested submission data
+                        "lunch_status": lunch_status,  # Lunch status
+                        "kit_status": kit_status,  # Kit status
+                    })
+                else:
+                    # If submission data is empty, return an error
+                    return JSONResponse(
+                        content={"success": False, "message": f"Form with ID {form_id} has empty submission data."},
+                        status_code=404,
+                    )
+
+            return JSONResponse(
+                content={"success": True, "message": "Submissions retrieved successfully", "data": response_data},
+                status_code=200
+            )
+        else:
+            return JSONResponse(
+                content={"success": False, "message": f"No submissions found for form_id {form_id}."},
+                status_code=404,
+            )
+
+    except Exception as e:
+        return JSONResponse(
+            content={"success": False, "message": f"An error occurred: {str(e)}"},
+            status_code=500,
+        )
